@@ -85,8 +85,8 @@ class Aps(gym.Env):
 
         # power cost
         mu = self.env_args.power_coef
-        transmission_power_consumption = simulator_info['transmission_power_consumption'].mean(dim=0)
-        ap_circuit_power_consumption = simulator_info['ap_circuit_power_consumption'].mean(dim=0)
+        transmission_power_consumption = simulator_info['transmission_power_consumption'].mean(dim=0)   # mean over different steps
+        ap_circuit_power_consumption = simulator_info['ap_circuit_power_consumption'].mean(dim=0)   # mean over different steps
 
         if self.env_args.if_use_local_power_sum and not self.env_args.if_full_cooperation:
             transmission_power_consumption_ = transmission_power_consumption.sum(dim=0, keepdim=True).expand_as(transmission_power_consumption)
@@ -136,11 +136,11 @@ class Aps(gym.Env):
             .flatten().to(torch.int32).unsqueeze(1)
 
         if self.env_args.simulation_scenario.if_power_in_db:
-            truncated_sinr_std = (10 ** (simulator_info['sinr'] / 10)).std(dim=1, unbiased=False).mean()
+            truncated_sinr_std = (10 ** (simulator_info['sinr'] / 10)).std(dim=1, unbiased=False).mean() # std over ue sinr in each step, them avg over different steps
             clean_sinr_std = (10 ** (simulator_info['clean_sinr'] / 10)).std(dim=1, unbiased=False).mean()
 
         info = {
-            'min_sinr': simulator_info['sinr'].mean(dim=0).min().mean(),
+            'min_sinr': simulator_info['sinr'].mean(dim=0).min(), # mean over different steps, them min across ues
             'mean_sinr': simulator_info['sinr'].mean(),
             'truncated_sinr_std': truncated_sinr_std,
             'clean_sinr_std': clean_sinr_std,

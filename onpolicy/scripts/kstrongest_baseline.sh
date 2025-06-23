@@ -2,7 +2,7 @@
 env="aps"
 algo="kstrongest"
 seed=1
-values="4"
+values="6"
 for k in $values; do
     exp="mrt/ap20_ue6_sinr0_lastg_8env/veh_10step_50ms/${k}strongest"
     python baseline.py --env_name ${env} --algorithm_name ${algo} \

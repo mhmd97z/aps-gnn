@@ -197,6 +197,6 @@ class MrtPowerControl(PowerControl):
         ap_connected_users_repeated = mask.sum(dim=1, keepdim=True).repeat(1, G.shape[1])
         power_budget = torch.ones_like(G).to(**self.tpdv) \
             * torch.sqrt(torch.tensor(1 / ap_connected_users_repeated)).to(**self.tpdv)
-        power_coef = torch.conj(G) / torch.abs(G) * power_budget
+        power_coef = torch.conj(G) / torch.abs(G) * power_budget * mask
 
         return power_coef
