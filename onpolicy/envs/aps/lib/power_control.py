@@ -35,8 +35,7 @@ class PowerControl:
             return sinr
 
     def get_transmission_power(self, allocated_power):
-        return allocated_power.abs() ** 2 \
-            * self.conf.ap_radiation_power / self.conf.signal_transmission_efficiency
+        return allocated_power.abs() ** 2 / self.conf.signal_transmission_efficiency
 
     def get_ap_circuit_power(self, mask):
         return torch.sum(mask, dim=1).sign() * self.conf.ap_constant_power_consumption * self.conf.ap_radiation_power

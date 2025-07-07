@@ -378,4 +378,8 @@ class ApsRunner(Runner):
             for info in env_infos:
                 v.append(info[k])
             v = torch.stack(v)
-            self.writter.add_scalars(k, {k: v.mean()}, total_num_steps)
+            if k == 'sinr':
+                for i in range(v.shape[1]):
+                    self.writter.add_scalar(f"{k}/ue_{i}", v[:, i].mean(), total_num_steps)
+            else:
+                self.writter.add_scalars(k, {k: v.mean()}, total_num_steps)

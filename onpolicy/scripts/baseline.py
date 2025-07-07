@@ -144,6 +144,10 @@ if __name__ == '__main__':
             env_infos = stack_list_dict_tensor(env_infos)
             for key, value in env_infos.items():
                 if len(value)>0:
-                    writer.add_scalars(key, {key: value.mean()}, total_num_steps)
+                    if key == 'sinr':
+                        for i in range(value.shape[1]):
+                            writer.add_scalar(f"{key}/ue_{i}", value[:, i].mean(), total_num_steps)
+                    else:
+                        writer.add_scalars(key, {key: value.mean()}, total_num_steps)
 
     writer.close()

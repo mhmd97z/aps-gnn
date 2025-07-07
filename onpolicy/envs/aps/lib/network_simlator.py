@@ -1,4 +1,4 @@
-import time
+import math
 import torch
 from channel_manager import NlosChannelManager
 from aps_utils import set_random_seed
@@ -84,6 +84,7 @@ class NetworkSimulator:
             else:
                 NotImplementedError
 
+            allocated_power *= math.sqrt(self.scenario_conf.ap_radiation_power)
             # to simulate aps, we set the non-activated power coef to zero
             masked_allocated_power = (allocated_power.clone().detach() * self.serving_mask).to(allocated_power)
             # calc power consumption

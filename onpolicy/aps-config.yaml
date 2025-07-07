@@ -8,7 +8,7 @@ env_args:
   # reward
   sinr_threshold: 0
   se_coef: 20 # 10-20 for step, 5 for exponential
-  power_coef: 5 # 10
+  power_coef: 10 # 10
   sec_to_pc_switch_threshold: 10.0
   if_use_local_power_sum: True
   if_sum_cost: False
@@ -27,16 +27,23 @@ env_args:
     precoding_algorithm: mrt # olp, mrt, optimal
     seed: 100
     float_dtype_sim: torch.float64
-    ap_radiation_power: 0.2
+    ap_radiation_power: 2
     signal_transmission_efficiency: 0.4
     ap_constant_power_consumption: 0.5
     if_sinr_in_db: True
     if_power_in_db: True
     ue_mobility_type: vehicular # pedestrain, vehicular
     simulation_timestep: 50 # ms
-    step_length: 10
+    step_length: 10 # TODO: try 200 steps
     if_remove_off_aps_form_olp: True
 
-# ap-ue: 6-20, 9-30, 6-30, 9-20
+# ap-ue: 6-20, 10-30, 6-30, 10-20
 # config: 1-1-1-10, 1-0-1-10
 # k-strongest: 6, 7, 8, gnnmappo, gnnmappo-pret
+
+
+# complet the existing rewards configs
+# other sinr thresholds -5 to 0
+# other ap-ue ratios
+# change the step length to 200 (10 s for APS)
+# read

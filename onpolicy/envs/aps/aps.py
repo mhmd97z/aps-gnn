@@ -140,6 +140,7 @@ class Aps(gym.Env):
             clean_sinr_std = (10 ** (simulator_info['clean_sinr'] / 10)).std(dim=1, unbiased=False).mean()
 
         info = {
+            'sinr': simulator_info['sinr'].mean(dim=0),
             'min_sinr': simulator_info['sinr'].mean(dim=0).min(), # mean over different steps, them min across ues
             'mean_sinr': simulator_info['sinr'].mean(),
             'truncated_sinr_std': truncated_sinr_std,
