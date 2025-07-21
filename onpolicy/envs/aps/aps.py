@@ -100,11 +100,11 @@ class Aps(gym.Env):
             totoal_ = torch.clip(totoal_, min=-30) + 31
         power_coef_cost = mu * torch.reshape(totoal_ , (-1, 1))
 
-        if self.env_args.if_connection_cost and not self.env_args.if_full_cooperation:
+        if self.env_args.if_connection_cost: # and not self.env_args.if_full_cooperation:
             power_coef_cost += mu * serving_mask.reshape(power_coef_cost.shape).to(power_coef_cost)
 
-        if self.env_args.if_full_cooperation:
-            power_coef_cost.fill_(power_coef_cost.sum())
+        # if self.env_args.if_full_cooperation:
+        #     power_coef_cost.fill_(power_coef_cost.sum())
 
         power_coef_cost = power_coef_cost.to(dtype=self.env_args.simulation_scenario.float_dtype_sim, 
                                              device=self.env_args.simulation_scenario.device_sim)
@@ -114,7 +114,7 @@ class Aps(gym.Env):
         threshold = self.env_args.sinr_threshold
         if self.env_args.if_full_cooperation:
             constraints = simulator_info['sinr'].clone().mean(dim=0)
-            constraints.fill_(simulator_info['sinr'].min() - threshold)
+            constraints.fill_((simulator_info['sinr'] - threshold).mean())
         else:
             constraints = (simulator_info['sinr'] - threshold).mean(dim=0)
 
@@ -138,6 +138,9 @@ class Aps(gym.Env):
         if self.env_args.simulation_scenario.if_power_in_db:
             truncated_sinr_std = (10 ** (simulator_info['sinr'] / 10)).std(dim=1, unbiased=False).mean() # std over ue sinr in each step, them avg over different steps
             clean_sinr_std = (10 ** (simulator_info['clean_sinr'] / 10)).std(dim=1, unbiased=False).mean()
+        else:
+            truncated_sinr_std = simulator_info['sinr'].std(dim=1, unbiased=False).mean()
+            clean_sinr_std = simulator_info['clean_sinr'].std(dim=1, unbiased=False).mean()
 
         info = {
             'sinr': simulator_info['sinr'].mean(dim=0),
