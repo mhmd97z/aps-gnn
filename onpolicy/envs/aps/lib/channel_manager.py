@@ -8,8 +8,6 @@ class NlosChannelManager:
         self.mobility_manager = MobilityManager(config)
         self.config_params(config)
         self.measurement_mask = torch.zeros((self.M, self.K), dtype=torch.bool)  # binary mask, torch tensor
-        self.serving_mask = None  # binary mask, torch tensor
-        self.measurement_aps_per_ue = None  # dictionary of torch tensors per UE
         self.large_scale_coef = None  # large-scale coefs
 
 
@@ -143,3 +141,90 @@ class NlosChannelManager:
         self.loc_ues[0], self.loc_ues[1] = self.mobility_manager.step(self.loc_ues[0], self.loc_ues[1])
         self.calculate_largescale_coefs()
         return self.calculate_coefs()
+
+
+class LosChannelManager:
+    def __init__(self, config):
+        self.mobility_manager = MobilityManager(config)
+        self.config_params(config)
+        self.measurement_mask = torch.zeros((self.M, self.K), dtype=torch.bool).to(self.tpdv['device'])  # binary mask, torch tensor
+        self.large_scale_coef = None  # large-scale coefs
+
+
+    def config_params(self, config):
+        self.max_serving_ue_count = config.max_serving_ue_count
+        self.max_measurment_ap_count = config.max_measurment_ap_count
+        self.tpdv = dict(device=config.device_sim,
+                         dtype=config.float_dtype_sim)
+        self.M = config.number_of_aps
+        self.K = config.number_of_ues
+
+        self.BSP = torch.tensor(0.2).to(**self.tpdv) # base station radiated power in watts
+        self.BW = torch.tensor(20).to(**self.tpdv) # bandwidth (MHz)
+        self.BSAntG = torch.tensor(0).to(**self.tpdv) # base station antenna gain (dB)
+        self.ATAntG = torch.tensor(0).to(**self.tpdv)  # access terminal antenna gain (dB)
+        self.NP = torch.tensor(-230 + 10 * log10(1.38 * (273.15 + 17)) + 30 + 10 * log10(self.BW) + 60).to(**self.tpdv)  # noise power in dBm
+        self.MNF = torch.tensor(9).to(**self.tpdv)  # mobile noise figure in dB
+        self.rho_d = 10 ** ((10 * log10(self.BSP) + 30 + self.BSAntG + self.ATAntG - self.NP - self.MNF) / 10)
+
+        self.h_bs = torch.tensor(10).to(**self.tpdv)  # service antenna height in meters
+        self.h_ms = torch.tensor(1.5).to(**self.tpdv)  # mobile station antenna height in meters
+        self.R = torch.tensor(500).to(**self.tpdv)  # radius of the area
+        self.mobility_manager.field_radius = self.R
+
+        self.f = torch.tensor(2e9).to(**self.tpdv)  # frequency in Hz
+        self.wavelength = torch.tensor(299792458 / self.f).to(**self.tpdv)  # wavelength in meters
+        self.PL_dB = torch.tensor(32.45 + 20 * log10(self.f * 10 ** (-9))).to(**self.tpdv)  # free space path loss
+        self.beta = torch.tensor(10 ** (-self.PL_dB / 10)).to(**self.tpdv)  # linear scale
+        self.kappa = torch.tensor(2 * pi / self.wavelength).to(**self.tpdv)
+
+
+    def generate_locations(self):
+        # Generate random distances for M service antennas in disc with radius R
+        d_sa = self.R * torch.sqrt(torch.rand(1, self.M)).to(**self.tpdv)
+        # Generate random angles for M service antennas in disc
+        theta_sa = 2 * pi * torch.rand(1, self.M).to(**self.tpdv)
+        x_sa = d_sa * torch.cos(theta_sa)  # x-coordinates for the M service antennas
+        y_sa = d_sa * torch.sin(theta_sa)  # y-coordinates for the M service antennas
+        # Generate user coordinates in the disc with radius R
+        d_m = self.R * torch.sqrt(torch.rand(1, self.K)).to(**self.tpdv)
+        theta_m = 2 * pi * torch.rand(1, self.K).to(**self.tpdv)
+        x_m = d_m * torch.cos(theta_m)  # x-coordinates for the K users
+        y_m = d_m * torch.sin(theta_m)  # y-coordinates for the K users
+        self.loc_aps = (x_sa, y_sa)
+        self.loc_ues = [x_m, y_m]
+
+
+    def calculate_largescale_coefs(self):
+        # Compute the distance from each of the K terminals to each of the M antennas
+        ddd = torch.sqrt(
+            (self.loc_ues[0].repeat(self.M, 1) - self.loc_aps[0].T.repeat(1, self.K)) ** 2 +
+            (self.loc_ues[1].repeat(self.M, 1) - self.loc_aps[1].T.repeat(1, self.K)) ** 2 +
+            ((self.h_ms - self.h_bs)) ** 2
+        ).to(**self.tpdv)
+        self.large_scale_coef = (torch.sqrt(self.beta) * torch.exp(1j * self.kappa * ddd) / ddd).to(**self.tpdv)
+
+
+    def assign_measurement_aps(self):
+        self.measurement_mask = torch.ones_like(self.large_scale_coef, dtype=torch.bool).to(self.tpdv['device'])  # Initialize binary mask
+
+
+    def calculate_coefs(self):
+        G = self.large_scale_coef
+        masked_G = self.large_scale_coef * self.measurement_mask
+        return G, masked_G, self.rho_d
+
+
+    def reset(self):
+        self.generate_locations()
+        self.step()
+        self.assign_measurement_aps()
+        self.mobility_manager.reset()
+        return self.measurement_mask
+
+
+    def step(self):
+        self.loc_ues[0], self.loc_ues[1] = self.mobility_manager.step(self.loc_ues[0], self.loc_ues[1])
+        self.calculate_largescale_coefs()
+        return self.calculate_coefs()
+

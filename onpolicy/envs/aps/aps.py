@@ -7,7 +7,7 @@ from gym import spaces
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "../envs/aps/lib")))
 from network_simlator import NetworkSimulator
 from data_store import DataStore
-from aps_utils import clip_abs, tpdv_parse, get_adj
+from aps_utils import clip_abs, tpdv_parse, get_adj, generalized_mean
 
 
 class Aps(gym.Env):
@@ -114,7 +114,7 @@ class Aps(gym.Env):
         threshold = self.env_args.sinr_threshold
         if self.env_args.if_full_cooperation:
             constraints = simulator_info['sinr'].clone().mean(dim=0)
-            constraints.fill_((simulator_info['sinr'] - threshold).mean())
+            constraints.fill_((generalized_mean(simulator_info['sinr'], 2) - threshold))
         else:
             constraints = (simulator_info['sinr'] - threshold).mean(dim=0)
 
@@ -135,19 +135,10 @@ class Aps(gym.Env):
         mask = self.simulator.channel_manager.measurement_mask.clone().detach() \
             .flatten().to(torch.int32).unsqueeze(1)
 
-        if self.env_args.simulation_scenario.if_power_in_db:
-            truncated_sinr_std = (10 ** (simulator_info['sinr'] / 10)).std(dim=1, unbiased=False).mean() # std over ue sinr in each step, them avg over different steps
-            clean_sinr_std = (10 ** (simulator_info['clean_sinr'] / 10)).std(dim=1, unbiased=False).mean()
-        else:
-            truncated_sinr_std = simulator_info['sinr'].std(dim=1, unbiased=False).mean()
-            clean_sinr_std = simulator_info['clean_sinr'].std(dim=1, unbiased=False).mean()
-
         info = {
             'sinr': simulator_info['sinr'].mean(dim=0),
             'min_sinr': simulator_info['sinr'].mean(dim=0).min(), # mean over different steps, them min across ues
             'mean_sinr': simulator_info['sinr'].mean(),
-            'truncated_sinr_std': truncated_sinr_std,
-            'clean_sinr_std': clean_sinr_std,
             'transmission_power_consumption': transmission_power_consumption.sum(),
             'circuit_power_consumption': ap_circuit_power_consumption.sum(),
             'totoal_power_consumption': transmission_power_consumption.sum() + ap_circuit_power_consumption.sum(),

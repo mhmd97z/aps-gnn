@@ -1,6 +1,6 @@
 import math
 import torch
-from channel_manager import NlosChannelManager
+from channel_manager import NlosChannelManager, LosChannelManager
 from aps_utils import set_random_seed
 from data_store import DataStore
 
@@ -30,7 +30,13 @@ class NetworkSimulator:
             self.power_control = MrtPowerControl(self.scenario_conf)
         else:
             raise NotImplementedError()
-        self.channel_manager = NlosChannelManager(self.scenario_conf)
+
+        if self.scenario_conf.channel_type == "nlos":
+            self.channel_manager = NlosChannelManager(self.scenario_conf)
+        elif self.scenario_conf.channel_type == "los":
+            self.channel_manager = LosChannelManager(self.scenario_conf)
+        else:
+            raise NotImplementedError()
 
     def set_seed(self, seed):
         self.seed = seed

@@ -110,3 +110,12 @@ def get_adj(n_ues, n_aps, if_transpose=False):
         same_ue_edges, same_ap_edges = np.array(same_ue_edges).transpose(), np.array(same_ap_edges).transpose()
 
     return same_ue_edges, same_ap_edges
+
+
+def generalized_mean(x, p):
+    x = x.to(torch.float64)  # Ensure high precision
+    if p == 0:
+        return torch.exp(torch.mean(torch.log(x)))
+    else:
+        return torch.mean(x ** p) ** (1.0 / p)
+

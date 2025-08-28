@@ -38,9 +38,6 @@ class MobilityManager:
             self.mean_movement_duration = 300000
             self.mean_movement_pause = 30000
 
-        else:
-            raise ValueError('Invalid mobility type')
-
 
     def generate_angles(self, indices):
         # if self.config.ue_mobility_type == 'pedestrain':
@@ -58,6 +55,9 @@ class MobilityManager:
 
 
     def step(self, curr_x, curr_y):
+        if self.config.ue_mobility_type == 'static':
+            return curr_x, curr_y
+
         self.ue_timer -= 1
         to_pause_indices = torch.nonzero(torch.logical_and(self.ue_timer == 0, self.ue_paused == 0), 
                                          as_tuple=True)
