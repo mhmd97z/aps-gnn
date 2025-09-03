@@ -84,7 +84,7 @@ class Aps_GR_Actor(nn.Module):
         super(Aps_GR_Actor, self).__init__()
         self.args = args
         self.hidden_size = args.hidden_size
-
+        self.if_supervised_learning = args.if_supervised_learning
         self._gain = args.gain
         self._use_orthogonal = args.use_orthogonal
         self._use_policy_active_masks = args.use_policy_active_masks
@@ -112,7 +112,7 @@ class Aps_GR_Actor(nn.Module):
             )
 
         self.act = ACTLayer(
-            action_space, self.hidden_size, self._use_orthogonal, self._gain
+            action_space, self.hidden_size, self._use_orthogonal, self._gain, self.if_supervised_learning
         )
 
         self.to(device)
@@ -156,13 +156,14 @@ class Aps_GR_Actor(nn.Module):
         actor_features = self.gnn_base(graph_batch)
         actor_features = self.base(actor_features)
 
-        # actions, action_log_probs, action_logits = self.act(
-        actions, action_log_probs = self.act(
-            actor_features, available_actions, deterministic
-        )
+        
 
-        # return (actions, action_log_probs, rnn_states, action_logits.probs)
-        return (actions, action_log_probs, rnn_states)
+        if self.if_supervised_learning:
+            actions, action_log_probs, action_logits = self.act(actor_features, available_actions, deterministic)
+            return (actions, action_log_probs, rnn_states, action_logits.probs)
+        else:
+            actions, action_log_probs = self.act(actor_features, available_actions, deterministic)
+            return (actions, action_log_probs, rnn_states)
 
     def evaluate_actions(
         self,

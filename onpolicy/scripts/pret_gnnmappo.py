@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import wandb
-import socket
 import yaml
 import pickle
 import setproctitle
@@ -19,20 +17,16 @@ import torch.nn as nn
 
 sys.path.append(os.path.abspath(os.getcwd()))
 sys.path.append("../../")
-from utils.utils import print_args, print_box, connected_to_internet
 from onpolicy.config import get_config
 from onpolicy.envs.aps.aps import Aps
-from onpolicy.envs.env_wrappers import (
-    SubprocVecEnv,
-    DummyVecEnv,
-    ApsSubprocVecEnv
-)
+from onpolicy.envs.env_wrappers import ApsSubprocVecEnv
+
 
 def make_train_env(all_args: argparse.Namespace):
     def get_env_fn(rank: int):
         def init_env():
             if all_args.env_name == "aps":
-                env = Aps(all_args.env_args)
+                env = Aps(all_args.env_args, if_graph=False)
             else:
                 print(f"Can not support the {all_args.env_name} environment")
                 raise NotImplementedError
@@ -41,43 +35,9 @@ def make_train_env(all_args: argparse.Namespace):
 
         return init_env
 
-    if all_args.n_rollout_threads == 1:
-        if all_args.env_name == "aps":
-            raise
-        return DummyVecEnv([get_env_fn(0)])
-    else:
-        if all_args.env_name == "aps":
-            return ApsSubprocVecEnv(
-                [get_env_fn(i) for i in range(all_args.n_rollout_threads)]
-            )
-        return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
-
-
-def make_eval_env(all_args: argparse.Namespace):
-    def get_env_fn(rank: int):
-        def init_env():
-            if all_args.env_name == "aps":
-                env = Aps(all_args.env_args)
-            else:
-                print(f"Can not support the {all_args.env_name} environment")
-                raise NotImplementedError
-            env.seed(all_args.seed * 50000 + rank * 10000)
-            return env
-
-        return init_env
-
-    if all_args.n_eval_rollout_threads == 1:
-        if all_args.env_name == "aps":
-            raise
-        return DummyVecEnv([get_env_fn(0)])
-    else:
-        if all_args.env_name == "aps":
-            return ApsSubprocVecEnv(
-                [get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)]
-            )
-        return SubprocVecEnv(
-            [get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)]
-        )
+    return ApsSubprocVecEnv(
+        [get_env_fn(i) for i in range(all_args.n_rollout_threads)]
+    )
 
 
 def merge_namespaces(namespace, yaml_namespace):
@@ -97,10 +57,10 @@ def parse_args(args, parser):
     return all_args, parser
 
 
-def main(args):
+def prep(args):
     parser = get_config()
     all_args = parser.parse_known_args(args)[0]
-    yaml_path = "/home/mzi/aps-infomarl/onpolicy/aps-config.yaml"
+    yaml_path = "/home/mzi/aps-gnn/onpolicy/aps-config.yaml"
     with open(yaml_path, 'r') as file:
         yaml_config = yaml.safe_load(file)
         def yaml_to_namespace(config):
@@ -114,7 +74,7 @@ def main(args):
         assert (
             all_args.use_recurrent_policy or all_args.use_naive_recurrent_policy
         ), "check recurrent policy!"
-    elif all_args.algorithm_name in ["mappo"]:
+    elif all_args.algorithm_name in ["mappo", "gnnmappo"]:
         assert (
             all_args.use_recurrent_policy == False
             and all_args.use_naive_recurrent_policy == False
@@ -124,14 +84,14 @@ def main(args):
 
     # cuda
     if all_args.cuda and torch.cuda.is_available():
-        print_box("Choose to use gpu...")
+        print("Choose to use gpu...")
         device = torch.device("cuda:0")
         torch.set_num_threads(all_args.n_training_threads)
         if all_args.cuda_deterministic:
             torch.backends.cudnn.benchmark = False
             torch.backends.cudnn.deterministic = True
     else:
-        print_box("Choose to use cpu...")
+        print("Choose to use cpu...")
         device = torch.device("cpu")
         torch.set_num_threads(all_args.n_training_threads)
 
@@ -179,7 +139,9 @@ def main(args):
 
     # env init
     envs = make_train_env(all_args)
-    eval_envs = make_eval_env(all_args) if all_args.use_eval else None
+    envs.reset()
+    # eval_envs = make_eval_env(all_args) if all_args.use_eval
+    eval_envs = None
     num_agents = all_args.env_args.simulation_scenario.number_of_aps * all_args.env_args.simulation_scenario.number_of_ues
     config = {
         "all_args": all_args,
@@ -201,22 +163,19 @@ def main(args):
 
     runner = Runner(config)
 
-    return runner.policy.actor, runner.save_dir
-
+    return runner.policy.actor, runner.save_dir, all_args.pickled_data_dir
 
 
 if __name__ == "__main__":
     if mp.get_start_method(allow_none=True) != 'spawn':
         mp.set_start_method('spawn', force=True)
 
-    with open("/home/mzi/aps-infomarl/onpolicy/scripts/pret_dataset/16strongest_20aps_6ues_dataset.pickle", 'rb') as f:
-        data_list = pickle.load(f)
-    print("pickled data is retireved")
+    actor, save_dir, pickled_data_dir = prep(sys.argv[1:])
 
-    # for item in data_list:
-    #     item['channel', 'same_ap', 'channel'].edge_index = item['channel', 'same_ap', 'channel'].edge_index.T
-    #     item['channel', 'same_ue', 'channel'].edge_index = item['channel', 'same_ue', 'channel'].edge_index.T
-    # print("fixed edges")
+    print("Retrieving pickled data")
+    with open(pickled_data_dir, 'rb') as f:
+        data_list = pickle.load(f)
+    print("pickled data is retrieved")
 
     random.seed(0)
     random.shuffle(data_list)
@@ -225,7 +184,6 @@ if __name__ == "__main__":
         data_list[int(len(data_list)*0.9):]
     train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
-    actor, save_dir = main(sys.argv[1:])
 
     optimizer = torch.optim.Adam(actor.parameters(), lr=0.001, weight_decay=1e-4)
     loss_fn = nn.CrossEntropyLoss()
@@ -243,7 +201,7 @@ if __name__ == "__main__":
         actions, action_log_probs, rnn_states, action_logits = actor(data, rnn_states, masks)
         correct += (actions.flatten() == data['channel'].y).sum().item()
         size += data['channel'].y.size(0)
-    print("Test Accuracy: {:.4f}".format(correct/size))
+    print("Initial test accuracy: {:.4f}".format(correct/size))
 
     for epoch in range(1, 101):
         print("\n ----- Epoch: ", epoch)
@@ -299,4 +257,5 @@ if __name__ == "__main__":
 
     # Save the model
     torch.save(actor.state_dict(), str(save_dir) + "/actor.pt")
+    print("Model saved at:", str(save_dir) + "/actor.pt")
 

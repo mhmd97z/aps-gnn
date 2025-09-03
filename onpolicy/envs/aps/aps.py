@@ -144,8 +144,8 @@ class Aps(gym.Env):
             'totoal_power_consumption': transmission_power_consumption.sum() + ap_circuit_power_consumption.sum(),
             'active_ap_count': torch.sum(serving_mask.reshape((self.num_aps, self.num_ues)), dim=1).sign().sum().float(),
             'reward': reward.mean(),
-            'mean_serving_ap_count': serving_mask.reshape((self.num_aps, self.num_ues)).sum(dim=0).float().mean(),
-            'mean_served_ue_count': serving_mask.reshape((self.num_aps, self.num_ues)).sum(dim=1).float().mean(),
+            'mean_serving_ap_count': serving_mask.reshape((self.num_aps, self.num_ues)).sum(dim=0).float(),
+            'mean_served_ue_count': serving_mask.reshape((self.num_aps, self.num_ues)).sum(dim=1).float(),
             'se_violation_cost': se_violation_cost.mean(),
             'power_coef_cost': power_coef_cost.mean(),
         }

@@ -381,5 +381,11 @@ class ApsRunner(Runner):
             if k == 'sinr':
                 for i in range(v.shape[1]):
                     self.writter.add_scalar(f"{k}/ue_{i}", v[:, i].mean(), total_num_steps)
+            elif k == "mean_serving_ap_count":
+                for i in range(v.shape[1]):
+                    self.writter.add_scalar(f"{k}/mean_serving_ap_count_ue_{i}", v[:, i].mean(), total_num_steps)
+            elif k == "mean_served_ue_count":
+                for i in range(v.shape[1]):
+                    self.writter.add_scalar(f"{k}/mean_served_ue_count_ap_{i}", v[:, i].mean(), total_num_steps)
             else:
                 self.writter.add_scalars(k, {k: v.mean()}, total_num_steps)

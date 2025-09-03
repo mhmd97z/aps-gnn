@@ -22,12 +22,12 @@ class ACTLayer(nn.Module):
     """
 
     def __init__(
-        self, action_space, inputs_dim: int, use_orthogonal: bool, gain: float
+        self, action_space, inputs_dim: int, use_orthogonal: bool, gain: float, if_supervised_learning: bool
     ):
         super(ACTLayer, self).__init__()
         self.mixed_action = False
         self.multi_discrete = False
-
+        self.if_supervised_learning = if_supervised_learning
         if action_space.__class__.__name__ == "Discrete":
             action_dim = action_space.n
             self.action_out = Categorical(inputs_dim, action_dim, use_orthogonal, gain)
@@ -111,7 +111,10 @@ class ACTLayer(nn.Module):
             actions = action_logits.mode() if deterministic else action_logits.sample()
             action_log_probs = action_logits.log_probs(actions)
 
-        return actions, action_log_probs # , action_logits
+        if self.if_supervised_learning:
+            return actions, action_log_probs, action_logits
+        else:
+            return actions, action_log_probs
 
     def get_probs(
         self, x: torch.Tensor, available_actions: Optional[torch.tensor] = None

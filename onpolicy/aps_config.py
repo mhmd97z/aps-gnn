@@ -18,8 +18,6 @@ def aps_config(args, parser, yaml_path="./aps.yaml"):
 
         yaml_namespace = yaml_to_namespace(yaml_config)
 
-
-
     parser.add_argument(
         "--embedding_size",
         type=int,

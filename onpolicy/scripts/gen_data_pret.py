@@ -7,11 +7,10 @@ import pickle
 import numpy as np
 from argparse import Namespace
 import torch.multiprocessing as mp
-
 sys.path.append(os.path.abspath(os.getcwd()))
 sys.path.append("../../")
 from onpolicy.config import get_config
-from onpolicy.scripts.train_aps import make_train_env
+from onpolicy.scripts.train_gnnmappo import make_train_env
 from onpolicy.envs.aps.lib.aps_utils import get_adj
 from torch_geometric.data import HeteroData
 
@@ -33,10 +32,10 @@ def parse_args(args, parser):
     return all_args, parser
 
 
-def main(args):
+def prep(args):
     parser = get_config()
     all_args = parser.parse_known_args(args)[0]
-    yaml_path = "/home/mzi/aps-infomarl/onpolicy/aps-config.yaml"
+    yaml_path = "/home/mzi/aps-gnn/onpolicy/aps-config.yaml"
     with open(yaml_path, 'r') as file:
         yaml_config = yaml.safe_load(file)
         def yaml_to_namespace(config):
@@ -59,18 +58,18 @@ if __name__ == "__main__":
     if mp.get_start_method(allow_none=True) != 'spawn':
         mp.set_start_method('spawn', force=True)
 
-    envs, all_args = main(sys.argv[1:])
+    envs, all_args = prep(sys.argv[1:])
     n_envs, n_aps, n_ues = all_args.n_rollout_threads, all_args.env_args.simulation_scenario.number_of_aps, all_args.env_args.simulation_scenario.number_of_ues
     obs, share_obs, available_actions, _ = envs.reset()
     action = np.ones((n_envs, n_aps, n_ues))
     data_list = []
-    episodes = 100
-    k = 4
+    k = all_args.k
 
+    episodes = int(all_args.num_env_steps) // all_args.episode_length // all_args.n_rollout_threads
     same_ue_edges, same_ap_edges = get_adj(n_ues, n_aps, if_transpose=False)
-    for episode in range(200):
-        print("episode: ", episode)
-        for step in range(100):
+    for episode in range(episodes):
+        print(f"episode {episode}/{episodes} ")
+        for step in range(all_args.episode_length):
             obs, _, _, _, _, _ = envs.step(
                 action
             )
@@ -89,6 +88,8 @@ if __name__ == "__main__":
 
                 data_list.append(data_)
 
-    print(f"saving at /home/mzi/aps-infomarl/onpolicy/scripts/{k}strongest_{n_aps}aps_{n_ues}ues_dataset.pickle")
-    with open(f"/home/mzi/aps-infomarl/onpolicy/scripts/pret_dataset/{k}strongest_{n_aps}aps_{n_ues}ues_dataset.pickle", 'wb') as f:
+    file_path = f"/home/mzi/aps-gnn/onpolicy/scripts/pret_dataset/{k}strongest_los_{n_aps}aps_{n_ues}ues_ped.pickle"
+    print(f"saving at {file_path}")
+    with open(file_path, 'wb') as f:
         pickle.dump(data_list, f)
+

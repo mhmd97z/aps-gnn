@@ -1,7 +1,7 @@
 #!/bin/sh
 env="aps"
 algo="fmat"
-exp="mrt/ap20_ue6_sinr0_lastg_8env/veh_10step_50ms/fmat/localpsum1_sumcost0_conncost1_pcoef5"
+exp="mrt/ap20_ue6_sinrn5_lastg_8env/veh_10step_50ms/fmat/localpsum1_sumcost0_conncost1_pcoef5"
 seed=1
 python train_fmat.py --env_name ${env} --algorithm_name ${algo} --gamma 0.01 \
  --experiment_name ${exp} --seed ${seed} --n_training_threads 8 --use_wandb False \

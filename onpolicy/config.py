@@ -624,6 +624,27 @@ def get_config():
         help="by default, print args and network at the begining.",
     )
 
+    parser.add_argument(
+        "--pickled_data_dir",
+        type=str,
+        default=None,
+        help="by default None. set the path to pickled data.",
+    )
+
+    parser.add_argument(
+        "--if_supervised_learning",
+        action="store_true",
+        default=False,
+        help="For the actor to return logits as well",
+    )
+    
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=5,
+        help="k in k-strongest in generating dataset",
+    )
+
     return parser
 
 
