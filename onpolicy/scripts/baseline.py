@@ -149,10 +149,10 @@ if __name__ == '__main__':
                             writer.add_scalar(f"{key}/ue_{i}", value[:, i].mean(), total_num_steps)
                     elif key == "mean_serving_ap_count":
                         for i in range(value.shape[1]):
-                            writer.add_scalar(f"{key}/mean_serving_ap_count_ue_{i}", value[:, i].mean(), total_num_steps)
+                            writer.add_scalar(f"{key}/ue_{i}", value[:, i].mean(), total_num_steps)
                     elif key == "mean_served_ue_count":
                         for i in range(value.shape[1]):
-                            writer.add_scalar(f"{key}/mean_served_ue_count_ap_{i}", value[:, i].mean(), total_num_steps)
+                            writer.add_scalar(f"{key}/ap_{i}", value[:, i].mean(), total_num_steps)
                     else:
                         writer.add_scalars(key, {key: value.mean()}, total_num_steps)
 

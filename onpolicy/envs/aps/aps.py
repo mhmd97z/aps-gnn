@@ -111,12 +111,13 @@ class Aps(gym.Env):
 
         # se cost
         eta = self.env_args.se_coef
-        threshold = self.env_args.sinr_threshold
+        threshold = self.env_args.se_threshold
         if self.env_args.if_full_cooperation:
-            constraints = simulator_info['sinr'].clone().mean(dim=0)
-            constraints.fill_((generalized_mean(simulator_info['sinr'], 2) - threshold))
+            constraints = torch.log2(1 + simulator_info['sinr']).clone().mean(dim=0)
+            constraints.fill_((generalized_mean(torch.log2(1 + simulator_info['sinr']), 2) - threshold))
         else:
-            constraints = (simulator_info['sinr'] - threshold).mean(dim=0)
+            se = torch.log2(1 + simulator_info['sinr'])
+            constraints = (se - threshold).mean(dim=0)
 
         se_violation_cost = torch.clip(torch.exp(-eta * constraints), max=500)
         se_violation_cost = se_violation_cost.expand(self.num_aps, -1).clone()
@@ -136,9 +137,9 @@ class Aps(gym.Env):
             .flatten().to(torch.int32).unsqueeze(1)
 
         info = {
-            'sinr': simulator_info['sinr'].mean(dim=0),
-            'min_sinr': simulator_info['sinr'].mean(dim=0).min(), # mean over different steps, them min across ues
-            'mean_sinr': simulator_info['sinr'].mean(),
+            'se': torch.log2(1 + simulator_info['sinr']).mean(dim=0), # simulator_info['sinr'].mean(dim=0),
+            # 'min_sinr': simulator_info['sinr'].mean(dim=0).min(), # mean over different steps, them min across ues
+            # 'mean_sinr': simulator_info['sinr'].mean(),
             'transmission_power_consumption': transmission_power_consumption.sum(),
             'circuit_power_consumption': ap_circuit_power_consumption.sum(),
             'totoal_power_consumption': transmission_power_consumption.sum() + ap_circuit_power_consumption.sum(),
