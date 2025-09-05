@@ -33,7 +33,7 @@ env_args:
     ap_constant_power_consumption: 0.5
     if_sinr_in_db: False
     if_power_in_db: True
-    ue_mobility_type: pedestrain # pedestrain, vehicular, static
+    ue_mobility_type: static # pedestrain, vehicular, static
     simulation_timestep: 50 # ms
     step_length: 10
     if_remove_off_aps_form_olp: True

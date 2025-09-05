@@ -1,7 +1,7 @@
 #!/bin/sh
 env="aps"
 algo="gnnmappo"
-exp="mrt_allsinr_los_se/ap20_ue6_sinr0_lastg_8env/ped_10step_50ms/gnnmappo00010-pret-4strongest"
+exp="mrt_allsinr_los_se/ap20_ue6_se1_lastg_8env/static_10step_50ms/gnnmappo00010-pret-4strongest"
 seed=1
 python train_gnnmappo.py --use_valuenorm --env_name ${env} --algorithm_name ${algo} \
  --experiment_name ${exp} --seed ${seed} --n_training_threads 8 --n_rollout_threads 8 \
