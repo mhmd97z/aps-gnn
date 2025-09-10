@@ -25,16 +25,16 @@ class MobilityManager:
     def generate_mobility_params(self):
         self.field_radius = None # channel maager will set this
         if self.config.ue_mobility_type == 'pedestrain':
-            self.mean_speed = 3.0 / 3.6 * 0.001 # in m/ms
-            self.min_speed = 1.0 / 3.6 * 0.001
-            self.max_speed = 7.0 / 3.6 * 0.001
+            self.mean_speed = 1.0 / 3.6 * 0.001 # in m/ms
+            self.min_speed = 0.0 / 3.6 * 0.001
+            self.max_speed = 3.0 / 3.6 * 0.001
             self.mean_movement_duration = 20000
             self.mean_movement_pause = 3000
 
         elif self.config.ue_mobility_type == 'vehicular':
-            self.mean_speed = 70.0 / 3.6 * 0.001 # in m/ms
-            self.min_speed = 50.0 / 3.6 * 0.001
-            self.max_speed = 120.0 / 3.6 * 0.001
+            self.mean_speed = 35.0 / 3.6 * 0.001 # in m/ms
+            self.min_speed = 10.0 / 3.6 * 0.001
+            self.max_speed = 60.0 / 3.6 * 0.001
             self.mean_movement_duration = 300000
             self.mean_movement_pause = 30000
 
