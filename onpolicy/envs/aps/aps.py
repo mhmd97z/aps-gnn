@@ -94,11 +94,11 @@ class Aps(gym.Env):
             transmission_power_consumption_ = transmission_power_consumption.clone()
         ap_circuit_power_consumption_ = ap_circuit_power_consumption.unsqueeze(1).expand_as(transmission_power_consumption)
 
-        totoal_ = ap_circuit_power_consumption_ + transmission_power_consumption_
+        total_ = ap_circuit_power_consumption_ + transmission_power_consumption_
         if self.env_args.simulation_scenario.if_power_in_db:
-            totoal_ = 10 * torch.log10(totoal_)
-            totoal_ = torch.clip(totoal_, min=-30) + 31
-        power_coef_cost = mu * torch.reshape(totoal_ , (-1, 1))
+            total_ = 10 * torch.log10(total_)
+            total_ = torch.clip(total_, min=-30) + 31
+        power_coef_cost = mu * torch.reshape(total_ , (-1, 1))
 
         if self.env_args.if_connection_cost: # and not self.env_args.if_full_cooperation:
             power_coef_cost += mu * serving_mask.reshape(power_coef_cost.shape).to(power_coef_cost)
@@ -142,7 +142,7 @@ class Aps(gym.Env):
             # 'mean_sinr': simulator_info['sinr'].mean(),
             'transmission_power_consumption': transmission_power_consumption.sum(),
             'circuit_power_consumption': ap_circuit_power_consumption.sum(),
-            'totoal_power_consumption': transmission_power_consumption.sum() + ap_circuit_power_consumption.sum(),
+            'total_power_consumption': transmission_power_consumption.sum() + ap_circuit_power_consumption.sum(),
             'active_ap_count': torch.sum(serving_mask.reshape((self.num_aps, self.num_ues)), dim=1).sign().sum().float(),
             'reward': reward.mean(),
             'serving_ap_count': serving_mask.reshape((self.num_aps, self.num_ues)).sum(dim=0).float(),

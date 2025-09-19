@@ -1,6 +1,116 @@
 import torch
-from math import log10, pi
+from math import log10, pi, sqrt
 from mobility import MobilityManager
+
+
+@torch.no_grad()
+def hex_points_in_disk_torch(
+    N: int,
+    R: float = 3.0,
+    *,
+    max_iter: int = 60,
+    device: torch.device,
+    dtype: torch.dtype,
+    seed: int = 42,
+):
+    """
+    Return: (pts, d)
+      pts: tensor of shape (N, 2) with ~equal spacing inside a radius-R disk
+      d  : approximate lattice spacing that was used
+    """
+    g = torch.Generator(device="cpu")
+    if seed is not None:
+        g.manual_seed(seed)
+
+    # initial spacing guess from hex packing density
+    d = sqrt((2 * pi * R * R) / (sqrt(3) * N))
+
+    Xc = torch.empty(0, device=device, dtype=dtype)
+    Yc = torch.empty(0, device=device, dtype=dtype)
+
+    for _ in range(max_iter):
+        dx = d
+        dy = d * sqrt(3) / 2
+
+        # Build rectangular hex grid covering the circle's bounding box
+        xs = torch.arange(-R - d, R + d + dx, dx, device=device, dtype=dtype)
+        ys = torch.arange(-R - d, R + d + dy, dy, device=device, dtype=dtype)
+
+        rows_X, rows_Y = [], []
+        for j, y in enumerate(ys.tolist()):
+            offset = (dx / 2) if (j % 2 == 1) else 0.0
+            X = xs + offset
+            Y = torch.full_like(xs, fill_value=y)
+            rows_X.append(X)
+            rows_Y.append(Y)
+
+        X = torch.cat(rows_X)  # (M,)
+        Y = torch.cat(rows_Y)  # (M,)
+
+        # Clip to disk
+        inside = (X * X + Y * Y) <= (R * R + 1e-12)
+        Xc, Yc = X[inside], Y[inside]
+        count = Xc.numel()
+
+        if count == N:
+            break
+
+        # multiplicative correction of spacing:
+        if count > 0:
+            d *= sqrt(count / N)
+        else:
+            d *= 0.9
+
+    # Ensure exactly N points
+    count = Xc.numel()
+    if count > 0:
+        pts = torch.stack([Xc, Yc], dim=1)  # (count, 2)
+    else:
+        pts = torch.empty(0, 2, device=device, dtype=dtype)
+
+    if count > N:
+        # Interleave center/edge to keep coverage
+        r = torch.linalg.norm(pts, dim=1)
+        idx_center = torch.argsort(r)              # near center first
+        idx_edge   = torch.argsort(-r)             # near boundary first
+        order = torch.empty_like(idx_center)
+        half = (len(idx_center) + 1) // 2
+        order[0::2] = idx_center[:half]
+        order[1::2] = idx_edge[:len(idx_center) - half]
+        sel = order[:N]
+        pts = pts[sel]
+    elif count < N:
+        # Add random points with a simple Poisson-disk-style filter
+        needed = N - count
+        rmin = 0.7 * d
+        tries = 0
+        max_tries = 20000
+
+        def rand_disk(m):
+            # sample uniformly in disk (inverse transform on radius)
+            u = torch.rand(m, 1, generator=g, device=device, dtype=dtype).clamp_(1e-12, 1)
+            theta = 2 * pi * torch.rand(m, 1, generator=g, device=device, dtype=dtype)
+            rr = R * torch.sqrt(u)
+            return torch.cat([rr * torch.cos(theta), rr * torch.sin(theta)], dim=1)
+
+        if pts.numel() == 0:
+            pts = rand_disk(min(needed, 32))
+            needed = N - pts.shape[0]
+
+        while needed > 0 and tries < max_tries:
+            tries += 1
+            cand = rand_disk(1)  # (1,2)
+            # distance to existing points
+            dists = torch.cdist(cand, pts, p=2) if pts.numel() else torch.empty(1, 0, device=device, dtype=dtype)
+            if dists.numel() == 0 or (dists >= rmin).all():
+                pts = torch.cat([pts, cand], dim=0)
+                needed -= 1
+
+        # If we overshot (unlikely), trim:
+        if pts.shape[0] > N:
+            pts = pts[:N]
+
+    return pts, float(d)
 
 
 class NlosChannelManager:
@@ -13,6 +123,8 @@ class NlosChannelManager:
 
     def config_params(self, config):
         # setting cell radius according to morphology
+        self.ap_location_pattern = config.ap_location_pattern
+        self.seed = config.seed
         self.max_serving_ue_count = config.max_serving_ue_count
         self.max_measurment_ap_count = config.max_measurment_ap_count
         self.tpdv = dict(device=config.device_sim,
@@ -60,12 +172,18 @@ class NlosChannelManager:
 
 
     def generate_locations(self):
-        # Generate random distances for M service antennas in disc with radius R
-        d_sa = self.R * torch.sqrt(torch.rand(1, self.M)).to(**self.tpdv)
-        # Generate random angles for M service antennas in disc
-        theta_sa = 2 * pi * torch.rand(1, self.M).to(**self.tpdv)
-        x_sa = d_sa * torch.cos(theta_sa)  # x-coordinates for the M service antennas
-        y_sa = d_sa * torch.sin(theta_sa)  # y-coordinates for the M service antennas
+        if self.ap_location_pattern == "hexagonal":
+            pts = hex_points_in_disk_torch(self.M, R=self.R, device=self.tpdv['device'], dtype=self.tpdv['dtype'], seed=self.seed)[0].T
+            x_sa, y_sa = pts[0:1, :], pts[1:2, :]
+        elif self.ap_location_pattern == "random":
+            # Generate random distances for M service antennas in disc with radius R
+            d_sa = self.R * torch.sqrt(torch.rand(1, self.M)).to(**self.tpdv)
+            # Generate random angles for M service antennas in disc
+            theta_sa = 2 * pi * torch.rand(1, self.M).to(**self.tpdv)
+            x_sa = d_sa * torch.cos(theta_sa)  # x-coordinates for the M service antennas
+            y_sa = d_sa * torch.sin(theta_sa)  # y-coordinates for the M service antennas
+        else:
+            raise ValueError("Unknown ap_location_pattern: {}".format(self.ap_location_pattern))
         # Generate user coordinates in the disc with radius R
         d_m = self.R * torch.sqrt(torch.rand(1, self.K)).to(**self.tpdv)
         theta_m = 2 * pi * torch.rand(1, self.K).to(**self.tpdv)

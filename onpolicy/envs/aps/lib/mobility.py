@@ -24,7 +24,7 @@ class MobilityManager:
 
     def generate_mobility_params(self):
         self.field_radius = None # channel maager will set this
-        if self.config.ue_mobility_type == 'pedestrain':
+        if self.config.ue_mobility_type == 'pedestrian':
             self.mean_speed = 1.0 / 3.6 * 0.001 # in m/ms
             self.min_speed = 0.0 / 3.6 * 0.001
             self.max_speed = 3.0 / 3.6 * 0.001
@@ -40,18 +40,12 @@ class MobilityManager:
 
 
     def generate_angles(self, indices):
-        # if self.config.ue_mobility_type == 'pedestrain':
         self.mobility_angles[indices] = 2 * torch.pi * torch.rand(1, len(indices[0])).to(**self.tpdv)
-        # else:
-        #     raise ValueError('Invalid mobility type')
 
 
     def generate_speeds(self, indices):
-        # if self.config.ue_mobility_type == 'pedestrain':
         self.mobility_speeds[indices] = torch.distributions.Exponential(1 / self.mean_speed) \
             .sample((1, len(indices[0]))).clamp(min=self.min_speed, max=self.max_speed).to(**self.tpdv)
-        # else:
-        #     raise ValueError('Invalid mobility type')
 
 
     def step(self, curr_x, curr_y):

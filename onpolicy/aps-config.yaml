@@ -8,11 +8,11 @@ env_args:
   # reward
   se_threshold: 1
   se_coef: 20 # 10-20 for step, 5 for exponential
-  power_coef: 10 # 10
+  power_coef: 8 # 10
   sec_to_pc_switch_threshold: 10.0
   if_use_local_power_sum: False
   if_sum_cost: False
-  if_connection_cost: False
+  if_connection_cost: True
   if_full_cooperation: False
 
   simulation_scenario:
@@ -33,7 +33,8 @@ env_args:
     ap_constant_power_consumption: 0.5
     if_sinr_in_db: False
     if_power_in_db: True
-    ue_mobility_type: static # pedestrain, vehicular, static
+    ue_mobility_type: pedestrian # pedestrian, vehicular, static
     simulation_timestep: 50 # ms
     step_length: 10
     if_remove_off_aps_form_olp: True
+    ap_location_pattern: hexagonal # random, hexagonal
