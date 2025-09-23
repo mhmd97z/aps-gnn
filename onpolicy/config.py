@@ -173,7 +173,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument(
-        "--algorithm_name", type=str, default="mappo", choices=["gnnmappo", "kstrongest", "fmat", "mat", "mappo", "happo"]
+        "--algorithm_name", type=str, default="mappo", choices=["gnnmappo", "gnnmappol", "kstrongest", "fmat", "mat", "mappo", "happo"]
     )
 
     parser.add_argument(
@@ -645,6 +645,20 @@ def get_config():
         help="k in k-strongest in generating dataset",
     )
 
+    parser.add_argument(
+        "--lagrangian_coef_rate",
+        type=float,
+        default=1,
+        help="Learning rate of lagrangian multiplier",
+    )
+
+    parser.add_argument(
+        "--lamda_lagr",
+        type=float,
+        default=50,
+        help="Lagrangian multiplier for safety constraints",
+    )
+
     return parser
 
 
@@ -776,20 +790,21 @@ def graph_config(args, parser):
 
     all_args = parser.parse_known_args(args)[0]
 
-    if all_args.auto_mini_batch_size:
-        # for recurrent generator only
-        num_mini_batch = (
-            all_args.n_rollout_threads * all_args.episode_length * all_args.num_agents
-        ) // (all_args.target_mini_batch_size)
-        new_batch_size = (
-            (all_args.n_rollout_threads * all_args.episode_length * all_args.num_agents)
-            // num_mini_batch
-            // all_args.data_chunk_length
-            * all_args.data_chunk_length
-        )
-        setattr(all_args, "num_mini_batch", num_mini_batch)
-        print("_" * 50)
-        print(f"Overriding num_mini_batch to {num_mini_batch}")
-        print(f"Batch size to be: {new_batch_size}")
-        print("_" * 50)
+    # if all_args.auto_mini_batch_size:
+    #     # for recurrent generator only
+    #     num_mini_batch = (
+    #         all_args.n_rollout_threads * all_args.episode_length * all_args.num_agents
+    #     ) // (all_args.target_mini_batch_size)
+    #     new_batch_size = (
+    #         (all_args.n_rollout_threads * all_args.episode_length * all_args.num_agents)
+    #         // num_mini_batch
+    #         // all_args.data_chunk_length
+    #         * all_args.data_chunk_length
+    #     )
+    #     setattr(all_args, "num_mini_batch", num_mini_batch)
+    #     print("_" * 50)
+    #     print(f"Overriding num_mini_batch to {num_mini_batch}")
+    #     print(f"Batch size to be: {new_batch_size}")
+    #     print("_" * 50)
+
     return all_args, parser

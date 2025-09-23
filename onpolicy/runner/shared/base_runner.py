@@ -85,6 +85,29 @@ class Runner(object):
                 self.envs.action_space[0],
             )
 
+        elif self.all_args.algorithm_name == "gnnmappol":
+            from onpolicy.algorithms.gnnmappol.graph_aps_mappol import GR_MAPPOL
+            from onpolicy.algorithms.gnnmappol.graph_aps_MAPPOLPolicy import GR_MAPPOLPolicy
+            from onpolicy.utils.gnnmappol_graph_buffer import GnnMappolReplayBuffer
+            self.policy = GR_MAPPOLPolicy(
+                self.all_args,
+                self.envs.observation_space[0],
+                share_observation_space,
+                self.envs.action_space[0],
+                device=self.device,
+            )
+            if self.model_dir is not None:
+                print(f"Restoring from checkpoint stored in {self.model_dir}")
+                self.restore()
+            self.trainer = GR_MAPPOL(self.all_args, self.policy, device=self.device)
+            self.buffer = GnnMappolReplayBuffer(
+                self.all_args,
+                self.num_agents,
+                self.envs.observation_space[0],
+                share_observation_space,
+                self.envs.action_space[0],
+            )
+
         elif self.all_args.algorithm_name == "fmat":
             from onpolicy.algorithms.fmat.mat_trainer import MATTrainer
             from onpolicy.algorithms.fmat.transformer_policy import TransformerPolicy
@@ -212,7 +235,7 @@ class Runner(object):
                 self.policy.critic.load_state_dict(policy_critic_state_dict)
             except FileNotFoundError:
                 print("No critic model found, using default critic.")
-            
+
 
     def process_infos(self, infos):
         """Process infos returned by environment."""
