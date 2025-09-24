@@ -157,9 +157,11 @@ class GR_MAPPOL():
             all_graphs, agent_id_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_cost_batch,
             actions_batch, masks_batch, available_actions_batch, active_masks_batch)
 
+        adv_targ_hybrid = adv_targ - self.lamda_lagr * cost_adv_targ
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
-        surr1 = imp_weights * adv_targ
-        surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+        surr1 = imp_weights * adv_targ_hybrid
+        surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ_hybrid
+
         if self._use_policy_active_masks:
             policy_action_loss = (
                 -torch.sum(torch.min(surr1, surr2), dim=-1,
@@ -167,8 +169,7 @@ class GR_MAPPOL():
                 ).sum() / active_masks_batch.sum()
         else:
             policy_action_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
-        lagrangian_actor_cost_loss = (imp_weights * cost_return_batch).mean()
-        policy_loss = policy_action_loss + self.lamda_lagr * lagrangian_actor_cost_loss
+        policy_loss = policy_action_loss
         self.policy.actor_optimizer.zero_grad()
         if update_actor:
             self.scaler.scale((policy_loss - dist_entropy * self.entropy_coef)).backward()
@@ -216,12 +217,11 @@ class GR_MAPPOL():
         self.scaler.step(self.policy.cost_optimizer)
         self.scaler.update()
 
-        self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound)
+        self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound) # we assume gamma is very small
         self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
 
         return (value_loss, critic_grad_norm, cost_loss, cost_grad_norm, 
-                policy_loss, actor_grad_norm, dist_entropy, imp_weights, 
-                lagrangian_actor_cost_loss, policy_action_loss)
+                policy_loss, actor_grad_norm, dist_entropy, imp_weights, policy_action_loss)
 
     def train(self,
             buffer,
@@ -270,7 +270,6 @@ class GR_MAPPOL():
         train_info['cost_grad_norm'] = 0
         train_info['cost_loss'] = 0
         train_info['lamda_lagr'] = self.lamda_lagr
-        train_info['lagrangian_actor_cost_loss'] = 0
         train_info['policy_action_loss'] = 0
 
         for _ in range(self.ppo_epoch):
@@ -293,7 +292,7 @@ class GR_MAPPOL():
 
                 value_loss, critic_grad_norm, cost_loss, cost_grad_norm, \
                 policy_loss, actor_grad_norm, dist_entropy, imp_weights, \
-                lagrangian_actor_cost_loss, policy_action_loss = self.ppol_update(sample, update_actor)
+                policy_action_loss = self.ppol_update(sample, update_actor)
 
                 train_info['value_loss'] += value_loss.item()
                 train_info['cost_loss'] += cost_loss.item()
@@ -304,7 +303,6 @@ class GR_MAPPOL():
                 train_info['ratio'] += imp_weights.mean()
                 train_info['dist_entropy'] += dist_entropy.item()
                 train_info['lamda_lagr'] += self.lamda_lagr.item()
-                train_info['lagrangian_actor_cost_loss'] += lagrangian_actor_cost_loss.item()
                 train_info['policy_action_loss'] += policy_action_loss.item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
