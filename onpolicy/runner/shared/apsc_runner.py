@@ -230,6 +230,7 @@ class ApsCRunner(Runner):
         )
         next_costs = np.array(np.split(_t2n(next_costs), self.n_rollout_threads))
         self.buffer.compute_cost_returns(next_costs, self.trainer.cost_normalizer)
+        self.buffer.fix_ue_ids()
 
     @torch.no_grad()
     def eval(self, total_num_steps: int):

@@ -56,8 +56,8 @@ class GnnMappolReplayBuffer(object):
         # get shapes of observations
         obs_shape = get_shape_from_obs_space(obs_space)
         share_obs_shape = get_shape_from_obs_space(cent_obs_space)
-
-        ####################
+        self.n_ues = args.env_args.simulation_scenario.number_of_ues
+        self.n_aps = args.env_args.simulation_scenario.number_of_aps
 
         if type(obs_shape[-1]) == list:
             obs_shape = obs_shape[:1]
@@ -439,7 +439,6 @@ class GnnMappolReplayBuffer(object):
                         + self.costs[step]
                     )
 
-
     def feed_forward_generator(
         self,
         advantages: arr,
@@ -497,6 +496,8 @@ class GnnMappolReplayBuffer(object):
 
         all_graphs = self.graph_storage.merge_all_graphs()
         all_graphs.sampler = sampler
+        all_graphs.n_aps = self.n_aps
+        all_graphs.n_ues = self.n_ues
 
         agent_id = self.agent_id[:-1].reshape(-1, *self.agent_id.shape[3:])
         rnn_states = self.rnn_states[:-1].reshape(-1, *self.rnn_states.shape[3:])
@@ -513,6 +514,7 @@ class GnnMappolReplayBuffer(object):
             )
         value_preds = self.value_preds[:-1].reshape(-1, 1)
         cost_preds = self.cost_preds[:-1].reshape(-1, 1)
+        ue_idx = self.ue_idx[:-1].reshape(-1, 1)
         returns = self.returns[:-1].reshape(-1, 1)
         cost_returns = self.cost_returns[:-1].reshape(-1, 1)
         masks = self.masks[:-1].reshape(-1, 1)
@@ -550,9 +552,10 @@ class GnnMappolReplayBuffer(object):
                 cost_adv_targ = None
             else:
                 cost_adv_targ = cost_advantages[indices]
+            ue_idx_batch = ue_idx[indices]
 
             yield all_graphs, agent_id_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_cost_batch, actions_batch, value_preds_batch, cost_preds_batch, \
-                return_batch, cost_return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, cost_adv_targ, available_actions_batch
+                return_batch, cost_return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, cost_adv_targ, available_actions_batch, ue_idx_batch
 
     def naive_recurrent_generator(
         self, advantages: arr, num_mini_batch: int
@@ -884,3 +887,8 @@ class GnnMappolReplayBuffer(object):
 
             yield share_obs_batch, obs_batch, node_obs_batch, adj_batch, agent_id_batch, share_agent_id_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, available_actions_batch
 
+    def fix_ue_ids(self) -> None:
+        """Fix the UE IDs in the buffer after an episxode ends and before training."""
+        l_episode, n_envs, n_agents, _ = self.costs.shape
+        assert n_agents == self.n_ues * self.n_aps, "n_agents does not equal n_ue * n_ap"
+        self.ue_idx = torch.arange(self.n_ues).repeat(self.n_aps, 1).reshape(-1, 1).repeat(l_episode+1, n_envs, 1, 1).to(dtype=torch.long)

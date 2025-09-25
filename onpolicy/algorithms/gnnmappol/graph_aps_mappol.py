@@ -48,9 +48,10 @@ class GR_MAPPOL():
         self._use_policy_active_masks = args.use_policy_active_masks
         self.scaler = amp.GradScaler() 
         assert (self._use_popart and self._use_valuenorm) == False, ("self._use_popart and self._use_valuenorm can not be set True simultaneously")
-        
+
+        self.n_ues = args.env_args.simulation_scenario.number_of_ues
         self.lagrangian_coef = args.lagrangian_coef_rate
-        self.lamda_lagr = torch.tensor(args.lamda_lagr).to(**self.tpdv)
+        self.lamda_lagr = torch.full((self.n_ues,), args.lamda_lagr, **self.tpdv)
         self.safety_bound = torch.tensor(0.0).to(**self.tpdv)
 
         if self._use_popart:
@@ -66,15 +67,15 @@ class GR_MAPPOL():
             self.if_pid_lagr_update = True
 
             self.pid_ki = args.lagr_pid_ki
-            self.pid_i = torch.tensor(0.0).to(**self.tpdv)
+            self.pid_i = torch.full((self.n_ues,), args.lamda_lagr, **self.tpdv)
 
             self.pid_kp = args.lagr_pid_kp
-            self.pid_p = torch.tensor(0.0).to(**self.tpdv)
-            self.pid_p_avg_alpha = torch.tensor(0.85).to(**self.tpdv)   # 0 for hard update, 1 for no update.
+            self.pid_p = torch.full((self.n_ues,), args.lamda_lagr, **self.tpdv)
+            self.pid_p_avg_alpha = torch.tensor(0.90).to(**self.tpdv)   # 0 for hard update, 1 for no update.
 
             self.pid_kd = args.lagr_pid_kd
-            self.cost_d = torch.tensor(0.0).to(**self.tpdv)
-            self.pid_d_avg_alpha = torch.tensor(0.95).to(**self.tpdv)   # 0 for hard update, 1 for no update.
+            self.cost_d = torch.zeros(self.n_ues).to(**self.tpdv)
+            self.pid_d_avg_alpha = torch.tensor(0.90).to(**self.tpdv)   # 0 for hard update, 1 for no update.
         else:
             self.if_pid_lagr_update = False
 
@@ -131,11 +132,20 @@ class GR_MAPPOL():
         return value_loss
 
 
-    def update_lagrangian_pid(self, cost_mean) -> None:
-        delta = cost_mean - self.safety_bound
+    def update_lagrangian_pid(self, cost, ue_idx):
+        cost = cost.flatten()
+        ue_idx = ue_idx.flatten()
+        unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
+        unique_indices = unique_indices.to(self.device)
+        inverse = inverse.to(self.device)
+        sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
+        count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
+        cost_mean_per_ue = sum_per_ue / count_per_ue
+
+        delta = cost_mean_per_ue - self.safety_bound
         self.pid_p = self.pid_p * self.pid_p_avg_alpha + delta * (1 - self.pid_p_avg_alpha)
         self.pid_i = (self.pid_i + delta * self.pid_ki).clamp(0.0, 10000.0)
-        cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean * (1 - self.pid_d_avg_alpha)
+        cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean_per_ue * (1 - self.pid_d_avg_alpha)
         pid_d = (cost_d - self.cost_d).clamp(0.0, 10000.0)
         self.cost_d = cost_d
         self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
@@ -168,7 +178,7 @@ class GR_MAPPOL():
                 importance sampling weights.
         """
         all_graphs, agent_id_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_cost_batch, actions_batch, value_preds_batch, cost_preds_batch, \
-        return_batch, cost_return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, cost_adv_targ, available_actions_batch = sample
+        return_batch, cost_return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, adv_targ, cost_adv_targ, available_actions_batch, ue_idx_batch = sample
 
         old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
         adv_targ = check(adv_targ).to(**self.tpdv)
@@ -178,12 +188,14 @@ class GR_MAPPOL():
         return_batch = check(return_batch).to(**self.tpdv)
         cost_return_batch = check(cost_return_batch).to(**self.tpdv)
         active_masks_batch = check(active_masks_batch).to(**self.tpdv)
+        ue_idx_batch = check(ue_idx_batch).to(self.device).to(torch.long)
 
         values, cost_values, action_log_probs, dist_entropy = self.policy.evaluate_actions(
             all_graphs, agent_id_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_cost_batch,
             actions_batch, masks_batch, available_actions_batch, active_masks_batch)
 
-        adv_targ_hybrid = (adv_targ - self.lamda_lagr * cost_adv_targ)/ (1 + self.lamda_lagr)
+        lambda_val = self.lamda_lagr[ue_idx_batch]
+        adv_targ_hybrid = (adv_targ - lambda_val * cost_adv_targ)
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
         surr1 = imp_weights * adv_targ_hybrid
         surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ_hybrid
@@ -244,7 +256,7 @@ class GR_MAPPOL():
         self.scaler.update()
 
         if self.if_pid_lagr_update:
-            self.update_lagrangian_pid(cost_return_batch.mean().item())
+            self.update_lagrangian_pid(cost_return_batch, ue_idx_batch)
         else:
             self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound) # we assume gamma is very small
             self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
@@ -298,7 +310,8 @@ class GR_MAPPOL():
         train_info['ratio'] = 0
         train_info['cost_grad_norm'] = 0
         train_info['cost_loss'] = 0
-        train_info['lamda_lagr'] = self.lamda_lagr
+        for i in range(self.n_ues):
+            train_info[f'lamda_lagr/ue_{i}'] = self.lamda_lagr[i]
         train_info['policy_action_loss'] = 0
 
         for _ in range(self.ppo_epoch):
@@ -331,7 +344,8 @@ class GR_MAPPOL():
                 train_info['actor_grad_norm'] += actor_grad_norm
                 train_info['ratio'] += imp_weights.mean()
                 train_info['dist_entropy'] += dist_entropy.item()
-                train_info['lamda_lagr'] += self.lamda_lagr.item()
+                for i in range(self.n_ues):
+                    train_info[f'lamda_lagr/ue_{i}'] += self.lamda_lagr[i].item()
                 train_info['policy_action_loss'] += policy_action_loss.item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
