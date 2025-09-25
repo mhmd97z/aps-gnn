@@ -659,6 +659,31 @@ def get_config():
         help="Lagrangian multiplier for safety constraints",
     )
 
+    parser.add_argument(
+        "--if_pid_lagr_update",
+        action="store_true",
+        default=False,
+        help="Whether to use PID controller to update lagrangian multiplier",
+    )
+    parser.add_argument(
+        "--lagr_pid_kp",
+        type=float,
+        default=0.1,
+        help="Proportional gain for the PID controller",
+    )
+    parser.add_argument(
+        "--lagr_pid_ki",
+        type=float,
+        default=1,
+        help="Integral gain for the PID controller",
+    )
+    parser.add_argument(
+        "--lagr_pid_kd",
+        type=float,
+        default=0.1,
+        help="Derivative gain for the PID controller",
+    )
+
     return parser
 
 

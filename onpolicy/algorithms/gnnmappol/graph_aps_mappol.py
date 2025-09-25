@@ -1,6 +1,4 @@
-import time
 import numpy as np
-import argparse
 from typing import Tuple
 import torch
 from torch import Tensor
@@ -64,6 +62,23 @@ class GR_MAPPOL():
             self.value_normalizer = None
             self.cost_normalizer = None
 
+        if args.if_pid_lagr_update:
+            self.if_pid_lagr_update = True
+
+            self.pid_ki = args.lagr_pid_ki
+            self.pid_i = torch.tensor(0.0).to(**self.tpdv)
+
+            self.pid_kp = args.lagr_pid_kp
+            self.pid_p = torch.tensor(0.0).to(**self.tpdv)
+            self.pid_p_avg_alpha = torch.tensor(0.85).to(**self.tpdv)   # 0 for hard update, 1 for no update.
+
+            self.pid_kd = args.lagr_pid_kd
+            self.cost_d = torch.tensor(0.0).to(**self.tpdv)
+            self.pid_d_avg_alpha = torch.tensor(0.95).to(**self.tpdv)   # 0 for hard update, 1 for no update.
+        else:
+            self.if_pid_lagr_update = False
+
+
     def cal_value_loss(self, 
                     values:Tensor, 
                     value_preds_batch:Tensor, 
@@ -115,6 +130,17 @@ class GR_MAPPOL():
 
         return value_loss
 
+
+    def update_lagrangian_pid(self, cost_mean) -> None:
+        delta = cost_mean - self.safety_bound
+        self.pid_p = self.pid_p * self.pid_p_avg_alpha + delta * (1 - self.pid_p_avg_alpha)
+        self.pid_i = (self.pid_i + delta * self.pid_ki).clamp(0.0, 10000.0)
+        cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean * (1 - self.pid_d_avg_alpha)
+        pid_d = (cost_d - self.cost_d).clamp(0.0, 10000.0)
+        self.cost_d = cost_d
+        self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
+
+
     @torch.cuda.amp.autocast()
     def ppol_update(self, 
                 sample:Tuple, 
@@ -157,7 +183,7 @@ class GR_MAPPOL():
             all_graphs, agent_id_batch, rnn_states_batch, rnn_states_critic_batch, rnn_states_cost_batch,
             actions_batch, masks_batch, available_actions_batch, active_masks_batch)
 
-        adv_targ_hybrid = adv_targ - self.lamda_lagr * cost_adv_targ
+        adv_targ_hybrid = (adv_targ - self.lamda_lagr * cost_adv_targ)/ (1 + self.lamda_lagr)
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
         surr1 = imp_weights * adv_targ_hybrid
         surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ_hybrid
@@ -217,8 +243,11 @@ class GR_MAPPOL():
         self.scaler.step(self.policy.cost_optimizer)
         self.scaler.update()
 
-        self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound) # we assume gamma is very small
-        self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
+        if self.if_pid_lagr_update:
+            self.update_lagrangian_pid(cost_return_batch.mean().item())
+        else:
+            self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound) # we assume gamma is very small
+            self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
 
         return (value_loss, critic_grad_norm, cost_loss, cost_grad_norm, 
                 policy_loss, actor_grad_norm, dist_entropy, imp_weights, policy_action_loss)
