@@ -151,6 +151,20 @@ class GR_MAPPOL():
         self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
 
 
+    def update_lagrangian_simple(self, cost, ue_idx):
+        cost = cost.flatten()
+        ue_idx = ue_idx.flatten()
+        unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
+        unique_indices = unique_indices.to(self.device)
+        inverse = inverse.to(self.device)
+        sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
+        count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
+        cost_mean_per_ue = sum_per_ue / count_per_ue
+
+        self.lamda_lagr += self.lagrangian_coef * (cost_mean_per_ue - self.safety_bound) # we assume gamma is very small
+        self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
+
+
     @torch.cuda.amp.autocast()
     def ppol_update(self, 
                 sample:Tuple, 
@@ -258,8 +272,7 @@ class GR_MAPPOL():
         if self.if_pid_lagr_update:
             self.update_lagrangian_pid(cost_return_batch, ue_idx_batch)
         else:
-            self.lamda_lagr += self.lagrangian_coef * (cost_return_batch.mean().item() - self.safety_bound) # we assume gamma is very small
-            self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
+            self.update_lagrangian_simple(cost_return_batch, ue_idx_batch)
 
         return (value_loss, critic_grad_norm, cost_loss, cost_grad_norm, 
                 policy_loss, actor_grad_norm, dist_entropy, imp_weights, policy_action_loss)
