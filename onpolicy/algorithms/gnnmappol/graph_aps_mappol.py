@@ -53,6 +53,7 @@ class GR_MAPPOL():
         self.lagrangian_coef = args.lagrangian_coef_rate
         self.lamda_lagr = torch.full((self.n_ues,), args.lamda_lagr, **self.tpdv)
         self.safety_bound = torch.tensor(0.0).to(**self.tpdv)
+        self.if_per_ue = args.if_update_lagr_per_ue
 
         if self._use_popart:
             self.value_normalizer = self.policy.critic.v_out
@@ -133,36 +134,50 @@ class GR_MAPPOL():
 
 
     def update_lagrangian_pid(self, cost, ue_idx):
-        cost = cost.flatten()
-        ue_idx = ue_idx.flatten()
-        unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
-        unique_indices = unique_indices.to(self.device)
-        inverse = inverse.to(self.device)
-        sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
-        count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
-        cost_mean_per_ue = sum_per_ue / count_per_ue
+        if self.if_per_ue:
+            cost = cost.flatten()
+            ue_idx = ue_idx.flatten()
+            unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
+            unique_indices = unique_indices.to(self.device)
+            inverse = inverse.to(self.device)
+            sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
+            count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
+            cost_mean_per_ue = sum_per_ue / count_per_ue
 
-        delta = cost_mean_per_ue - self.safety_bound
-        self.pid_p = self.pid_p * self.pid_p_avg_alpha + delta * (1 - self.pid_p_avg_alpha)
-        self.pid_i = (self.pid_i + delta * self.pid_ki).clamp(0.0, 10000.0)
-        cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean_per_ue * (1 - self.pid_d_avg_alpha)
-        pid_d = (cost_d - self.cost_d).clamp(0.0, 10000.0)
-        self.cost_d = cost_d
-        self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
+            delta = cost_mean_per_ue - self.safety_bound
+            self.pid_p = self.pid_p * self.pid_p_avg_alpha + delta * (1 - self.pid_p_avg_alpha)
+            self.pid_i = (self.pid_i + delta * self.pid_ki).clamp(0.0, 10000.0)
+            cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean_per_ue * (1 - self.pid_d_avg_alpha)
+            pid_d = (cost_d - self.cost_d).clamp(0.0, 10000.0)
+            self.cost_d = cost_d
+            self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
+        else:
+            cost_mean = cost.mean()
+            delta = cost_mean - self.safety_bound
+            self.pid_p = self.pid_p * self.pid_p_avg_alpha + delta * (1 - self.pid_p_avg_alpha)
+            self.pid_i = (self.pid_i + delta * self.pid_ki).clamp(0.0, 10000.0)
+            cost_d = self.cost_d * self.pid_d_avg_alpha + cost_mean * (1 - self.pid_d_avg_alpha)
+            pid_d = (cost_d - self.cost_d).clamp(0.0, 10000.0)
+            self.cost_d = cost_d
+            self.lamda_lagr = (self.pid_kp * self.pid_p + self.pid_i + self.pid_kd * pid_d).clamp(0.0, 10000.0)
 
 
     def update_lagrangian_simple(self, cost, ue_idx):
-        cost = cost.flatten()
-        ue_idx = ue_idx.flatten()
-        unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
-        unique_indices = unique_indices.to(self.device)
-        inverse = inverse.to(self.device)
-        sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
-        count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
-        cost_mean_per_ue = sum_per_ue / count_per_ue
-
-        self.lamda_lagr += self.lagrangian_coef * (cost_mean_per_ue - self.safety_bound) # we assume gamma is very small
-        self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
+        if self.if_per_ue:
+            cost = cost.flatten()
+            ue_idx = ue_idx.flatten()
+            unique_indices, inverse = torch.unique(ue_idx, return_inverse=True, sorted=True)
+            unique_indices = unique_indices.to(self.device)
+            inverse = inverse.to(self.device)
+            sum_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, cost)
+            count_per_ue = torch.zeros(unique_indices.shape[0], dtype=cost.dtype, device=self.device).scatter_add_(0, inverse, torch.ones_like(cost, dtype=cost.dtype))
+            cost_mean_per_ue = sum_per_ue / count_per_ue
+            self.lamda_lagr += self.lagrangian_coef * (cost_mean_per_ue - self.safety_bound) # we assume gamma is very small
+            self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
+        else:
+            cost_mean = cost.mean()
+            self.lamda_lagr += self.lagrangian_coef * (cost_mean - self.safety_bound) # we assume gamma is very small
+            self.lamda_lagr = torch.clamp(self.lamda_lagr, 0.0, 10000.0)
 
 
     @torch.cuda.amp.autocast()

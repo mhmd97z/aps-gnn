@@ -660,6 +660,13 @@ def get_config():
     )
 
     parser.add_argument(
+        "--if_update_lagr_per_ue",
+        action="store_true",
+        default=False,
+        help="Whether to update lagrangian multiplier per UE",
+    )
+
+    parser.add_argument(
         "--if_pid_lagr_update",
         action="store_true",
         default=False,
