@@ -5,7 +5,6 @@ from aps_utils import set_random_seed
 from data_store import DataStore
 
 
-torch.set_printoptions(precision=20)
 class NetworkSimulator:
     def __init__(self, conf):
         self.scenario_conf = conf

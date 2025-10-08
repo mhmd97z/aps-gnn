@@ -1,22 +1,15 @@
-import numpy as np
-from scipy import sparse
 import torch
 from torch import Tensor
 import torch.nn as nn
-import torch_geometric
-import torch_geometric.nn as gnn
-from torch_geometric.data import Data, Batch ##, DataLoader
-from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
 from torch_geometric.nn import (
     MessagePassing, TransformerConv, global_mean_pool, global_max_pool, 
     global_add_pool, HeteroConv, Linear, LayerNorm)
-from torch_geometric.utils import add_self_loops, to_dense_batch
+from torch_geometric.utils import add_self_loops
 
 import argparse
-from typing import List, Tuple, Union, Optional
-from torch_geometric.typing import OptPairTensor, Adj, OptTensor, Size
-import torch.jit as jit
-from .util import init, get_clones
+from typing import List, Tuple, Union
+from torch_geometric.typing import OptPairTensor, Adj, OptTensor
 
 """GNN modules"""
 
@@ -577,6 +570,8 @@ class GNNBase(nn.Module):
     # @property
     # def out_dim(self):
     # 	return self.hidden_size + (self.heads-1)*self.concat*(self.hidden_size)
+
+
 class Aps_GNN(nn.Module):
     def __init__(self, args, input_shape):
         super(Aps_GNN, self).__init__()
@@ -631,4 +626,118 @@ class Aps_GNN(nn.Module):
 
         if sampler is not None:
             embedding = embedding[sampler[0]].clone()
+        return embedding
+
+
+class Aps_GNN_R(nn.Module):
+    def __init__(self, args, input_shape):
+        super(Aps_GNN_R, self).__init__()
+        self.args = args
+
+        # RNN for history
+        rnn_hidden_size = 64
+        self.hist_rnn = nn.GRU(
+            input_size=2,
+            hidden_size=rnn_hidden_size,
+            num_layers=1,
+            batch_first=True,
+        )
+
+        for name, p in self.hist_rnn.named_parameters():
+            if "bias" in name:
+                nn.init.constant_(p, 0.0)
+            elif "weight" in name:
+                nn.init.orthogonal_(p)
+
+        # GNN layers
+        hc = [128, 128, 128]
+        num_layers = len(hc)
+        heads = 4
+        aggr = 'sum'
+
+        self.convs = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        for i in range(num_layers-1):
+            in_channels = hc[i]
+            out_channels = int(hc[i+1] / heads)
+            conv = HeteroConv({
+                ('channel', 'same_ue', 'channel'):
+                TransformerConv(in_channels, out_channels,
+                                heads=heads, dropout=0.3, root_weight=True, concat=True),
+                ('channel', 'same_ap', 'channel'):
+                TransformerConv(in_channels, out_channels,
+                                heads=heads, dropout=0.3, root_weight=True, concat=True)
+            }, aggr=aggr).to(torch.float32)
+            self.convs.append(conv)
+            self.norms.append(LayerNorm(hc[i+1]).to(torch.float32))
+
+        self.lin0 = Linear(2, 64).to(torch.float32)
+        self.lin1 = Linear(sum(hc), 64).to(torch.float32)
+        self.out_dim = 64
+
+    def init_hidden(self):
+        return None
+
+    def _ensure_hist_shape(self, x_channel: torch.Tensor) -> torch.Tensor:
+        """
+        Accepts:
+        - (N, 2k) with layout [f1^{t-k+1}, f2^{t-k+1}, ..., f1^t, f2^t]
+        - (N, k, 2)
+        - (N, 2) when k=1
+        Returns (N, k, 2) in chronological order.
+        """
+        if x_channel.dim() == 3:
+            N, k_in, f_in = x_channel.shape
+            if f_in != 2:
+                raise ValueError(f"Expected step_feat=2, got {f_in}.")
+            # Trust the tensor's k
+            self.k = k_in
+            self.step_feat = 2
+            return x_channel
+
+        if x_channel.dim() == 2:
+            N, F = x_channel.shape
+            if F == 2:  # k=1 case
+                self.k, self.step_feat = 1, 2
+                return x_channel.unsqueeze(1)  # (N,1,2)
+
+            if F % 2 != 0:
+                raise ValueError(f"Per-agent feature length must be even (got {F}).")
+            k_infer = F // 2
+            self.k, self.step_feat = k_infer, 2
+
+            # Reshape keeps the pairwise temporal order you provided:
+            # [f1^{t-k+1}, f2^{t-k+1}, ..., f1^t, f2^t] -> (N, k, 2)
+            return x_channel.reshape(N, k_infer, 2)
+
+        raise ValueError("x['channel'] must be 2D or 3D tensor.")
+
+    def forward(self, batch):
+        if hasattr(batch['channel'], 'batch'):
+            channel_batch = batch['channel'].batch
+        else:
+            channel_batch = None
+        x_dict = batch.x_dict
+        edge_index_dict = batch.edge_index_dict
+        sampler = getattr(batch, "sampler", None)
+
+        x_hist = self._ensure_hist_shape(x_dict['channel']).to(dtype=torch.float32)
+
+        x_curr = self.lin0(x_hist[:, -1, :])
+        _, h_n = self.hist_rnn(x_hist, None)
+        x_dict['channel'] = torch.cat([h_n[-1], x_curr], dim=-1)
+
+        embedding_parts = [x_dict['channel']]
+        for conv, norm in zip(self.convs, self.norms):
+            x_dict = conv(x_dict, edge_index_dict)
+            tmp = norm(x_dict['channel'].relu(), channel_batch)
+            x_dict = {'channel': tmp}
+            embedding_parts.append(tmp)
+
+        embedding = torch.cat(embedding_parts, dim=1)
+        embedding = self.lin1(embedding)
+
+        if sampler is not None:
+            embedding = embedding[sampler[0]].clone()
+
         return embedding

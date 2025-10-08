@@ -2,7 +2,7 @@ env_args:
   episode_limit: 10
 
   # state
-  history_length: 1
+  history_length: 4
   if_include_channel_rank: False
 
   # reward

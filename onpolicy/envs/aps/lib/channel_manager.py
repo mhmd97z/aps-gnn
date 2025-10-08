@@ -320,7 +320,7 @@ class LosChannelManager:
             (self.loc_ues[1].repeat(self.M, 1) - self.loc_aps[1].T.repeat(1, self.K)) ** 2 +
             ((self.h_ms - self.h_bs)) ** 2
         ).to(**self.tpdv)
-        self.large_scale_coef = (torch.sqrt(self.beta) * torch.exp(1j * self.kappa * ddd) / ddd).to(**self.tpdv)
+        self.large_scale_coef = (torch.sqrt(self.beta) * torch.exp(1j * self.kappa * ddd) / ddd)
 
 
     def assign_measurement_aps(self):

@@ -1,12 +1,11 @@
 import argparse
-from typing import Tuple, List
-
 import gym
 import torch
 from torch import Tensor
+from typing import Tuple
 import torch.nn as nn
 from onpolicy.algorithms.gnnmappo.utils.util import init, check
-from onpolicy.algorithms.gnnmappo.utils.gnn import Aps_GNN
+from onpolicy.algorithms.gnnmappo.utils.gnn import Aps_GNN, Aps_GNN_R
 from onpolicy.algorithms.gnnmappo.utils.mlp import MLPBase
 from onpolicy.algorithms.gnnmappo.utils.rnn import RNNLayer
 from onpolicy.algorithms.gnnmappo.utils.act import ACTLayer
@@ -97,7 +96,11 @@ class Aps_GR_Actor(nn.Module):
 
         obs_shape = get_shape_from_obs_space(obs_space)
         
-        self.gnn_base = Aps_GNN(args, obs_shape)
+        if args.if_rnn_gnn:
+            self.gnn_base = Aps_GNN_R(args, obs_shape)
+        else:
+            self.gnn_base = Aps_GNN(args, obs_shape)
+
         gnn_out_dim = self.gnn_base.out_dim  # output shape from gnns
         # mlp_base_in_dim = gnn_out_dim + obs_shape[0]
         # self.base = MLPBase(args, obs_shape=None, override_obs_dim=mlp_base_in_dim)
@@ -155,8 +158,6 @@ class Aps_GR_Actor(nn.Module):
         
         actor_features = self.gnn_base(graph_batch)
         actor_features = self.base(actor_features)
-
-        
 
         if self.if_supervised_learning:
             actions, action_log_probs, action_logits = self.act(actor_features, available_actions, deterministic)
@@ -264,7 +265,10 @@ class Aps_GR_Critic(nn.Module):
         cent_obs_shape = get_shape_from_obs_space(cent_obs_space)
 
         # TODO modify output of GNN to be some kind of global aggregation
-        self.gnn_base = Aps_GNN(args, cent_obs_shape)
+        if args.if_rnn_gnn:
+            self.gnn_base = Aps_GNN_R(args, cent_obs_shape)
+        else:
+            self.gnn_base = Aps_GNN(args, cent_obs_shape)
         gnn_out_dim = self.gnn_base.out_dim
         # if node aggregation, then concatenate aggregated node features for all agents
         # otherwise, the aggregation is done for the whole graph

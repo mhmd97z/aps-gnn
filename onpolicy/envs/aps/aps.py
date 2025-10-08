@@ -71,14 +71,12 @@ class Aps(gym.Env):
         self.datastore.add(obs=channel_coef[-1])
 
         G = self.datastore.get_last_k_elements()['obs']
-        # TODO: aggregate over history
-        G = G.squeeze()
         G = clip_abs(G)
-        x = torch.reshape(G, (-1, 1))
-        x = torch.cat((torch.log2(torch.abs(x)), x.angle()), 1)
+        x = torch.stack((torch.log2(torch.abs(G)), G.angle()), -1)
         x_mean = torch.tensor(self.normalization_dict['x_mean']).to(device=x.device)
         x_std = torch.tensor(self.normalization_dict['x_std']).to(device=x.device)
         x = (x - x_mean[:2]) / x_std[:2]
+        x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
 
         obs = x.clone()
         state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
@@ -209,10 +207,8 @@ class Aps_c(gym.Env):
         self.history_length = self.env_args.history_length
         self.datastore = DataStore(self.history_length, ['obs'])
 
-        if self.env_args.if_include_channel_rank:
-            self.feature_length = 3
-        else:
-            self.feature_length = 2
+        self.feature_length = 2
+        self.feature_length += 1 if self.env_args.if_include_channel_rank else 0
 
         self.num_ues = self.simulator.scenario_conf.number_of_ues
         self.num_aps = self.simulator.scenario_conf.number_of_aps
@@ -261,17 +257,28 @@ class Aps_c(gym.Env):
         self.datastore.add(obs=channel_coef[-1])
 
         G = self.datastore.get_last_k_elements()['obs']
-        # TODO: aggregate over history
-        G = G.squeeze()
         G = clip_abs(G)
-        x = torch.reshape(G, (-1, 1))
-        x = torch.cat((torch.log2(torch.abs(x)), x.angle()), 1)
+        x = torch.stack((torch.log2(torch.abs(G)), G.angle()), -1)
         x_mean = torch.tensor(self.normalization_dict['x_mean']).to(device=x.device)
         x_std = torch.tensor(self.normalization_dict['x_std']).to(device=x.device)
         x = (x - x_mean[:2]) / x_std[:2]
-
+        x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
         obs = x.clone()
         state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
+
+        # G = self.datastore.get_last_k_elements()['obs']
+        # # TODO: aggregate over history
+        # G = G.squeeze()
+        # G = clip_abs(G)
+        # x = torch.reshape(G, (-1, 1))
+        # x = torch.cat((torch.log2(torch.abs(x)), x.angle()), 1)
+        # x_mean = torch.tensor(self.normalization_dict['x_mean']).to(device=x.device)
+        # x_std = torch.tensor(self.normalization_dict['x_std']).to(device=x.device)
+        # x = (x - x_mean[:2]) / x_std[:2]
+        # print("x shape:", x)
+        # raise
+        # obs = x.clone()
+        # state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
 
         # power cost
         # mu = self.env_args.power_coef

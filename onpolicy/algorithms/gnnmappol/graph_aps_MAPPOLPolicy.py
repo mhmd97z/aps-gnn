@@ -4,7 +4,7 @@ import argparse
 import torch
 from torch import Tensor
 from typing import Tuple
-from onpolicy.algorithms.gnnmappo.aps_graph_actor_critic import Aps_GR_Actor, Aps_GR_Critic
+from onpolicy.algorithms.gnnmappol.apsc_graph_actor_critic import Aps_GR_Actor, Aps_GR_Critic
 from onpolicy.utils.util import update_linear_schedule
 
 

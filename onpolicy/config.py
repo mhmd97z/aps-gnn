@@ -691,6 +691,13 @@ def get_config():
         help="Derivative gain for the PID controller",
     )
 
+    parser.add_argument(
+        "--if_rnn_gnn",
+        action="store_true",
+        default=False,
+        help="Whether to use RNN in GNN",
+    )
+
     return parser
 
 

@@ -56,6 +56,7 @@ def parse_args(args, parser):
 def k_aps(obs, k=1, config=None, largest=True, random=False):
     n_ues = config.env_args.simulation_scenario.number_of_ues
     n_aps = config.env_args.simulation_scenario.number_of_aps
+    history_length = config.env_args.history_length
 
     n_envs = obs.shape[0]
     assert n_ues * n_aps == obs.shape[1]
@@ -63,7 +64,7 @@ def k_aps(obs, k=1, config=None, largest=True, random=False):
         indices = generate_non_repetitive_randint_tensor(
             batch=n_envs, rows=k, cols=n_ues, max_val=n_aps).to(device=obs.device)
     else:
-        channel_mag = torch.tensor(obs[:, :, 0]).view(-1, n_aps, n_ues)
+        channel_mag = torch.tensor(obs[:, :, (history_length-1)*2]).view(-1, n_aps, n_ues)
         indices = torch.topk(channel_mag, k, dim=1, largest=largest).indices.to(device=obs.device)
     mask = torch.zeros((n_envs, n_aps, n_ues)).to(device=obs.device)\
         .scatter_(1, indices, 1) \
