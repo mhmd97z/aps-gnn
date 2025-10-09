@@ -1,7 +1,7 @@
 #!/bin/sh
 env="aps"
 algo="gnnmappol"
-exp="test_rnn/ap20_ue6_se1_8env/ped2_1step_50ms/gnnmappol-p2i2d2-uelagr-pret4strongest-new"
+exp="mrt_allsinr_los_se_hexaps_new/ap20_ue6_se2_8env/ped2_1step_50ms/gnnmappol-p3i3d3-uelagr-pret4strongestn"
 seed=1
 python train_gnnmappol.py --use_valuenorm --env_name ${env} --algorithm_name ${algo} \
  --experiment_name ${exp} --seed ${seed} --n_training_threads 8 --n_rollout_threads 8 \
@@ -9,17 +9,8 @@ python train_gnnmappol.py --use_valuenorm --env_name ${env} --algorithm_name ${a
  --ppo_epoch 5 --use_ReLU --lr 7e-4 --critic_lr 7e-4 \
  --user_name "marl" --use_recurrent_policy False --max_grad_norm 1 \
  --gamma 0.01 --use_linear_lr_decay --log_interval 1 \
- --entropy_coef 0.1  --if_update_lagr_per_ue True --if_pid_lagr_update True --if_rnn_gnn True \
- --lagrangian_coef_rate 1.0 --lagr_pid_kp 2 --lagr_pid_ki 2 --lagr_pid_kd 2 \
- --model_dir pretrained_models/los_hexaps_ap20_ue6_ped_4history/4strongest
+ --entropy_coef 0.1  --if_update_lagr_per_ue True --if_pid_lagr_update True --if_rnn_gnn False \
+ --lagrangian_coef_rate 1.0 --lagr_pid_kp 3 --lagr_pid_ki 3 --lagr_pid_kd 3 \
+ --model_dir pretrained_models/los_hexaps_ap20_ue6_ped_1history/4strongest
 
-#  --model_dir /home/mzi/aps-gnn/onpolicy/results/aps/gnnmappo/pretraining/los_hexaps_ap20_ue6_ped/4strongest/run2/models
-#  --use_eval \
-
-#  --model_dir /home/mzi/aps-gnn/onpolicy/results/aps/gnnmappo/pretraining/los_hexaps_ap20_ue6_ped/4strongest/run2/models
-#  --model_dir /home/mzi/aps-gnn/onpolicy/results/aps/gnnmappo/mrt_allsinr_los_se_hexaps/ap20_ue6_se1_lastg_8env/ped2_1step_50ms/gnnmappo00110-pret-4strongest/run1/models \
-#  --model_dir /home/mzi/aps-gnn/onpolicy/results/aps/gnnmappo/mrt_allsinr_los_se_hexaps/ap20_ue6_se1_lastg_8env/ped2_1step_500ms/gnnmappo00110-eval/run2/models \
-# --model_dir /home/mzi/aps-gnn/saved_results/mrt_allsinr_los_se_1env.ap20_ue6_se1.ped2_1step_500ms/gnnmappo00010-pret-4strongest/run1/models \
-# --model_dir pretrained_models/los_ap20_ue6_ped/4strongest/run1/models \ 
-# --model_dir /home/mzi/aps-gnn/saved_results/mrt_allsinr_los_se.ap20_ue6_se1.ped2_1step_500ms/gnnmappo00110-pret-4strongest/run1/models    \
-# --model_dir /home/mzi/aps-gnn/saved_results/mrt_allsinr_los_se.ap20_ue6_se1.veh2_1step_500ms/gnnmappo00110-pret-4strongest/run1/models    \
+#  --use_eval

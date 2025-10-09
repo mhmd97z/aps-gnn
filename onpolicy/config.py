@@ -661,14 +661,14 @@ def get_config():
 
     parser.add_argument(
         "--if_update_lagr_per_ue",
-        action="store_true",
+        type=lambda x: bool(strtobool(x)),
         default=False,
         help="Whether to update lagrangian multiplier per UE",
     )
 
     parser.add_argument(
         "--if_pid_lagr_update",
-        action="store_true",
+        type=lambda x: bool(strtobool(x)),
         default=False,
         help="Whether to use PID controller to update lagrangian multiplier",
     )
@@ -693,7 +693,7 @@ def get_config():
 
     parser.add_argument(
         "--if_rnn_gnn",
-        action="store_true",
+        type=lambda x: bool(strtobool(x)),
         default=False,
         help="Whether to use RNN in GNN",
     )
