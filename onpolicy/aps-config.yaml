@@ -2,11 +2,12 @@ env_args:
   episode_limit: 10
 
   # state
-  history_length: 4
+  history_length: 1
+  if_include_phase: False
   if_include_channel_rank: False
 
   # reward
-  se_threshold: 1
+  se_threshold: 2
   se_coef: 10 # 10-20 for step, 5 for exponential
   power_coef: 8 # 10
   sec_to_pc_switch_threshold: 10.0

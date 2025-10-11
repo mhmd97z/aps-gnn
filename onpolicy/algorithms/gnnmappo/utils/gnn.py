@@ -597,7 +597,7 @@ class Aps_GNN(nn.Module):
             self.convs.append(conv)
             self.norms.append(LayerNorm(hc[i+1]).to(torch.float32))
 
-        self.lin0 = Linear(2, 128).to(torch.float32)
+        self.lin0 = Linear(1, 128).to(torch.float32)
         self.lin1 = Linear(sum(hc), 64).to(torch.float32)
         self.out_dim = 64
 
@@ -671,7 +671,7 @@ class Aps_GNN_R(nn.Module):
             self.convs.append(conv)
             self.norms.append(LayerNorm(hc[i+1]).to(torch.float32))
 
-        self.lin0 = Linear(2, 64).to(torch.float32)
+        self.lin0 = Linear(1, 64).to(torch.float32)
         self.lin1 = Linear(sum(hc), 64).to(torch.float32)
         self.out_dim = 64
 
