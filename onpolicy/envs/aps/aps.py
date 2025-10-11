@@ -19,10 +19,9 @@ class Aps(gym.Env):
         self.history_length = self.env_args.history_length
         self.datastore = DataStore(self.history_length, ['obs'])
 
-        if self.env_args.if_include_channel_rank:
-            self.feature_length = 3
-        else:
-            self.feature_length = 2
+        self.feature_length = 1
+        self.feature_length += 1 if self.env_args.if_include_phase else 0
+        self.feature_length += 1 if self.env_args.if_include_channel_rank else 0
 
         self.num_ues = self.simulator.scenario_conf.number_of_ues
         self.num_aps = self.simulator.scenario_conf.number_of_aps
@@ -66,18 +65,21 @@ class Aps(gym.Env):
         serving_mask = self.simulator.serving_mask.clone().detach().to(torch.int32)
 
         channel_coef = simulator_info['channel_coef']
-        # TODO: aggregate over step length
-        # self.datastore.add(obs=channel_coef.mean(dim=0))
         self.datastore.add(obs=channel_coef[-1])
-
         G = self.datastore.get_last_k_elements()['obs']
         G = clip_abs(G)
-        x = torch.stack((torch.log2(torch.abs(G)), G.angle()), -1)
-        x_mean = torch.tensor(self.normalization_dict['x_mean']).to(device=x.device)
-        x_std = torch.tensor(self.normalization_dict['x_std']).to(device=x.device)
-        x = (x - x_mean[:2]) / x_std[:2]
-        x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
 
+        x_mean = torch.tensor(self.normalization_dict['x_mean']).to(device=G.device)
+        x_std = torch.tensor(self.normalization_dict['x_std']).to(device=G.device)
+
+        if self.env_args.if_include_phase:
+            x = torch.stack((torch.log2(torch.abs(G)), G.angle()), -1)
+            x = (x - x_mean[:2]) / x_std[:2]
+        else:
+            x = torch.log2(torch.abs(G)).unsqueeze(-1)
+            x = (x - x_mean[:1]) / x_std[:1]
+
+        x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
         obs = x.clone()
         state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
 
