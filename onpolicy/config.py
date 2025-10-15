@@ -660,6 +660,13 @@ def get_config():
     )
 
     parser.add_argument(
+        "--lambda_lagr_max",
+        type=float,
+        default=10,
+        help="Maximum Lagrangian multiplier for safety constraints",
+    )
+
+    parser.add_argument(
         "--if_update_lagr_per_ue",
         type=lambda x: bool(strtobool(x)),
         default=False,
