@@ -61,6 +61,9 @@ if __name__ == "__main__":
     envs, all_args = prep(sys.argv[1:])
     n_envs, n_aps, n_ues = all_args.n_rollout_threads, all_args.env_args.simulation_scenario.number_of_aps, all_args.env_args.simulation_scenario.number_of_ues
     history_length = all_args.env_args.history_length
+    feature_length = 1
+    feature_length += 1 if all_args.env_args.if_include_phase else 0
+    feature_length += 1 if all_args.env_args.if_include_channel_rank else 0
     obs, share_obs, available_actions, _ = envs.reset()
     action = np.ones((n_envs, n_aps, n_ues))
     data_list = []
@@ -75,8 +78,9 @@ if __name__ == "__main__":
                 action
             )
             obs = torch.tensor(obs)
+            # [n_envs, n_aps*n_ues, history_length*feature_length]
 
-            channel_mag = torch.tensor(obs[:, :, (history_length-1)*2]).view(-1, n_aps, n_ues)
+            channel_mag = torch.tensor(obs[:, :, (history_length-1)*feature_length]).view(-1, n_aps, n_ues)
             indices = torch.topk(channel_mag, k, dim=1, largest=True).indices.to(device=obs.device)
             mask = torch.zeros((n_envs, n_aps, n_ues)).scatter_(1, indices, 1).to(dtype=torch.int, device=obs.device).reshape((n_envs, -1))
 
@@ -89,7 +93,7 @@ if __name__ == "__main__":
 
                 data_list.append(data_)
 
-    file_path = f"/home/mzi/aps-gnn/onpolicy/scripts/pret_dataset/{k}strongest_los_{n_aps}aps_{n_ues}ues_ped_{history_length}hlength.pickle"
+    file_path = f"/home/mzi/aps-gnn/onpolicy/scripts/pret_dataset/{k}strongest_los_{n_aps}aps_{n_ues}ues_ped_{history_length}hlength_f1.pickle"
     print(f"saving at {file_path}")
     with open(file_path, 'wb') as f:
         pickle.dump(data_list, f)

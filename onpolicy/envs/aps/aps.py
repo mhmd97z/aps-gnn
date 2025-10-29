@@ -79,9 +79,11 @@ class Aps(gym.Env):
             x = torch.log2(torch.abs(G)).unsqueeze(-1)
             x = (x - x_mean[:1]) / x_std[:1]
 
+        # G: [history_length, n_aps, n_ues, feature_dim]
         x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
         obs = x.clone()
-        state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
+        flat_global = obs.reshape(1, -1)          # [1, n_agents * feature_dim]
+        state = flat_global.repeat(obs.size(0), 1)  # [n_agents, n_agents * feature_dim]
 
         # power cost
         # mu = self.env_args.power_coef
@@ -271,7 +273,8 @@ class Aps_c(gym.Env):
 
         x = x.permute(1, 2, 0, 3).reshape(self.n_agents, self.history_length * self.feature_length)
         obs = x.clone()
-        state = obs.view(-1, obs.shape[0]*obs.shape[1]).repeat(obs.shape[0], 1).clone()
+        flat_global = obs.reshape(1, -1)          # [1, n_agents * feature_dim]
+        state = flat_global.repeat(obs.size(0), 1)  # [n_agents, n_agents * feature_dim]
 
         # G = self.datastore.get_last_k_elements()['obs']
         # # TODO: aggregate over history

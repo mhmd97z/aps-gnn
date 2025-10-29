@@ -1,19 +1,15 @@
-import numpy as np
-from scipy import sparse
 import torch
 from torch import Tensor
 import torch.nn as nn
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Data
 from torch_geometric.nn import (
     MessagePassing, TransformerConv, global_mean_pool, global_max_pool, 
     global_add_pool, HeteroConv, Linear, LayerNorm)
 from torch_geometric.utils import add_self_loops
 
 import argparse
-from typing import List, Tuple, Union, Optional
-from torch_geometric.typing import OptPairTensor, Adj, OptTensor, Size
-import torch.jit as jit
-from .util import init, get_clones
+from typing import List, Tuple, Union
+from torch_geometric.typing import OptPairTensor, Adj, OptTensor
 
 """GNN modules"""
 
@@ -637,11 +633,14 @@ class Aps_GNN_R(nn.Module):
     def __init__(self, args, input_shape):
         super(Aps_GNN_R, self).__init__()
         self.args = args
-
+        self.h_length = self.args.env_args.history_length
+        self.f_length = 1
+        self.f_length += 1 if self.args.env_args.if_include_phase else 0
+        self.f_length += 1 if self.args.env_args.if_include_channel_rank else 0
         # RNN for history
         rnn_hidden_size = 64
         self.hist_rnn = nn.GRU(
-            input_size=2,
+            input_size=self.f_length,
             hidden_size=rnn_hidden_size,
             num_layers=1,
             batch_first=True,
@@ -691,28 +690,13 @@ class Aps_GNN_R(nn.Module):
         Returns (N, k, 2) in chronological order.
         """
         if x_channel.dim() == 3:
-            N, k_in, f_in = x_channel.shape
-            if f_in != 2:
-                raise ValueError(f"Expected step_feat=2, got {f_in}.")
-            # Trust the tensor's k
-            self.k = k_in
-            self.step_feat = 2
-            return x_channel
+            raise
 
         if x_channel.dim() == 2:
             N, F = x_channel.shape
-            if F == 2:  # k=1 case
-                self.k, self.step_feat = 1, 2
-                return x_channel.unsqueeze(1)  # (N,1,2)
-
-            if F % 2 != 0:
-                raise ValueError(f"Per-agent feature length must be even (got {F}).")
-            k_infer = F // 2
-            self.k, self.step_feat = k_infer, 2
-
             # Reshape keeps the pairwise temporal order you provided:
             # [f1^{t-k+1}, f2^{t-k+1}, ..., f1^t, f2^t] -> (N, k, 2)
-            return x_channel.reshape(N, k_infer, 2)
+            return x_channel.reshape(N, self.h_length, self.f_length)
 
         raise ValueError("x['channel'] must be 2D or 3D tensor.")
 
@@ -724,11 +708,16 @@ class Aps_GNN_R(nn.Module):
         x_dict = batch.x_dict
         edge_index_dict = batch.edge_index_dict
         sampler = getattr(batch, "sampler", None)
+
         x_hist = self._ensure_hist_shape(x_dict['channel']).to(dtype=torch.float32)
 
         x_curr = self.lin0(x_hist[:, -1, :])
         _, h_n = self.hist_rnn(x_hist, None)
-        x_dict['channel'] = torch.cat([h_n[-1], x_curr], dim=-1)
+        # x_dict['channel'] = torch.cat([h_n[-1], x_curr], dim=-1)
+        x_tmp = torch.cat([h_n[-1], x_curr], dim=-1)
+        x_tmp = nn.functional.layer_norm(x_tmp, normalized_shape=(x_tmp.shape[-1],))
+        x_dict['channel'] = x_tmp
+
         embedding_parts = [x_dict['channel']]
         for conv, norm in zip(self.convs, self.norms):
             x_dict = conv(x_dict, edge_index_dict)
