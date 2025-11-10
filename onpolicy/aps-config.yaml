@@ -2,7 +2,7 @@ env_args:
   episode_limit: 10
 
   # state
-  history_length: 3
+  history_length: 10
   if_include_phase: False
   if_include_channel_rank: False
 
