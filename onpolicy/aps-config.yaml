@@ -6,8 +6,8 @@ env_args:
 
   # reward
   se_threshold: 1.5
-  se_coef: 15 # 10-20 for step, 5 for exponential
-  if_full_cooperation: False
+  se_coef: 5 # 10-20 for step, 5 for exponential
+  if_full_cooperation: True
 
   simulation_scenario:
     if_use_cuda_sim: True
@@ -27,7 +27,7 @@ env_args:
     ap_constant_power_consumption: 0.5
     if_sinr_in_db: False
     if_power_in_db: True
-    ue_mobility_type: pedestrian # pedestrian, vehicular, static
+    ue_mobility_type: vehicular # pedestrian, vehicular, static
     simulation_timestep: 50 # ms
     step_length: 1
     if_remove_off_aps_form_olp: True

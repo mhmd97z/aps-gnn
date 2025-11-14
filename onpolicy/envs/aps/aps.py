@@ -60,7 +60,6 @@ class Aps(gym.Env):
 
 
     def compute_state_reward(self):
-        assert not self.env_args.if_full_cooperation
         # state calc
         simulator_info = self.simulator.datastore.get_last_k_elements()
         serving_mask = self.simulator.serving_mask.clone().detach().to(torch.int32)
@@ -86,15 +85,28 @@ class Aps(gym.Env):
         flat_global = obs.reshape(1, -1)          # [1, n_agents * feature_dim]
         state = flat_global.repeat(obs.size(0), 1)  # [n_agents, n_agents * feature_dim]
 
-        # reward calc
-        active_aps = serving_mask.sum(dim=1).sign()
-        if_corresponding_ap_is_on = active_aps.unsqueeze(1).repeat(1, self.num_ues).reshape(-1, 1)
-
+        # reward
+        threshold = self.env_args.se_threshold
+        se = torch.log2(1 + simulator_info['sinr']).mean(dim=0) # mean over different steps and ues
         eta = self.env_args.se_coef
-        se = torch.log2(1 + simulator_info['sinr']).mean(dim=0) # mean over different steps
-        se_satis_ratio_clipped = torch.clamp(se / self.env_args.se_threshold, max=1.0)
-        if_corresponding_se_is_satisfied = se_satis_ratio_clipped.unsqueeze(1).repeat(1, self.num_aps).reshape(-1, 1)
-        reward = eta * if_corresponding_se_is_satisfied - if_corresponding_ap_is_on
+        if self.env_args.if_full_cooperation:
+            active_aps = serving_mask.sum(dim=1).sign().sum().float()
+            activated_ap_ratio_ = active_aps / self.num_aps
+            activated_ap_ratio = torch.full((self.n_agents, 1), activated_ap_ratio_, device=serving_mask.device, dtype=torch.float32)
+
+            se_satis_ratio_clipped_ = torch.clamp(se / threshold, max=1.0).mean().item()
+            se_satis_ratio_clipped = torch.full((self.n_agents, 1), se_satis_ratio_clipped_, device=serving_mask.device, dtype=torch.float32)
+
+            reward = eta * se_satis_ratio_clipped - activated_ap_ratio
+
+        else:
+            active_aps = serving_mask.sum(dim=1).sign().float()
+            if_corresponding_ap_is_on = active_aps.unsqueeze(1).repeat(1, self.num_ues).reshape(-1, 1)
+
+            se_satis_ratio_clipped = torch.clamp(se / self.env_args.se_threshold, max=1.0)
+            if_corresponding_se_is_satisfied = se_satis_ratio_clipped.unsqueeze(1).repeat(1, self.num_aps).reshape(-1, 1)
+
+            reward = eta * if_corresponding_se_is_satisfied - if_corresponding_ap_is_on
 
         mask = self.simulator.channel_manager.measurement_mask.clone().detach() \
             .flatten().to(torch.int32).unsqueeze(1)
@@ -238,9 +250,6 @@ class Aps_c(gym.Env):
         if self.env_args.if_full_cooperation:
             cost_scalar = (-se + threshold).mean().item()
             cost = torch.full((self.n_agents, 1), cost_scalar, device=serving_mask.device, dtype=torch.float32)
-            print(cost_scalar)
-            print(cost.shape, cost)
-            raise
         else:
             minus_if_corresponding_se_is_satisfied = (-se + threshold).unsqueeze(1).repeat(1, self.num_aps).reshape(-1, 1)
             cost = minus_if_corresponding_se_is_satisfied
