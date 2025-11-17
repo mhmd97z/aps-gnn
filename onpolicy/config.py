@@ -173,7 +173,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument(
-        "--algorithm_name", type=str, default="mappo", choices=["gnnmappo", "gnnmappol", "kstrongest", "fmat", "mat", "mappo", "happo"]
+        "--algorithm_name", type=str, default="mappo", choices=["gnnmappo", "gnnmappol", "kstrongest", "fmat", "mat", "matl", "mappo", "happo"]
     )
 
     parser.add_argument(

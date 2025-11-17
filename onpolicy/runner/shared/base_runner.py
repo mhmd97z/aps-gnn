@@ -156,6 +156,29 @@ class Runner(object):
                     self.all_args.env_name
             )
 
+        elif self.all_args.algorithm_name == "matl":
+            from onpolicy.algorithms.matl.matl_trainer import MATLTrainer
+            from onpolicy.algorithms.matl.transformer_policy import TransformerPolicy
+            from onpolicy.utils.matl_graph_buffer import MatlReplayBuffer
+            self.policy = TransformerPolicy(self.all_args,
+                             self.envs.observation_space[0],
+                             share_observation_space,
+                             self.envs.action_space[0],
+                             self.num_agents,
+                             device=self.device)
+            if self.model_dir is not None:
+                print(f"Restoring from checkpoint stored in {self.model_dir}")
+                self.restore()
+            self.trainer = MATLTrainer(self.all_args, self.policy, self.num_agents, device=self.device)
+            self.buffer = MatlReplayBuffer(
+                self.all_args,
+                self.num_agents,
+                self.envs.observation_space[0],
+                share_observation_space,
+                self.envs.action_space[0],
+                    self.all_args.env_name
+            )
+
         elif self.all_args.algorithm_name == "mappo":
             from onpolicy.algorithms.mappo.mappo_algo import R_MAPPO
             from onpolicy.algorithms.mappo.mappo_policy import R_MAPPOPolicy
@@ -213,13 +236,16 @@ class Runner(object):
 
     def save(self, episode=None):
         """Save policy's actor and critic networks."""
-        if episode is None:
-            policy_actor = self.trainer.policy.actor
-            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
-            policy_critic = self.trainer.policy.critic
-            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
+        if self.all_args.algorithm_name == "matl":
+            pass
         else:
-            self.policy.save(self.save_dir, episode)
+            if episode is None:
+                policy_actor = self.trainer.policy.actor
+                torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
+                policy_critic = self.trainer.policy.critic
+                torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
+            else:
+                self.policy.save(self.save_dir, episode)
 
     def restore(self):
         """Restore policy's networks from a saved model."""

@@ -1375,7 +1375,7 @@ class ApsCSubprocVecEnv(ShareVecEnv):
                 np.stack(same_ap)
             )
         else:
-            obs, states, rewards, dones, infos, mask = zip(*results)
+            obs, states, rewards, costs, dones, infos, mask = zip(*results)
             return (
                 np.stack(obs), # , Batch.from_data_list(list(obs)),
                 np.stack(states),

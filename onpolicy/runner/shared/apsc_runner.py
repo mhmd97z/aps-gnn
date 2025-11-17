@@ -58,28 +58,47 @@ class ApsCRunner(Runner):
                     rnn_states_cost
                 ) = self.collect(step)
 
-                # Obs reward and next obs
-                obs, states, rewards, costs, dones, infos, mask, same_ue, same_ap = self.envs.step(
-                    actions.copy()
-                )
-                agent_id = torch.arange(states.shape[1]).unsqueeze(1).repeat(1, states.shape[0]).T.unsqueeze(2).numpy()
-                batch = generate_graph_batch(obs, same_ap, same_ue, agent_id)
-                data = (
-                    batch,
-                    agent_id,
-                    rewards,
-                    costs,
-                    dones,
-                    infos,
-                    values,
-                    cost_preds,
-                    actions,
-                    action_log_probs,
-                    rnn_states,
-                    rnn_states_critic,
-                    rnn_states_cost
-                )
-
+                if self.all_args.algorithm_name == "gnnmappol":
+                    # Obs reward and next obs
+                    obs, states, rewards, costs, dones, infos, mask, same_ue, same_ap = self.envs.step(
+                        actions.copy()
+                    )
+                    agent_id = torch.arange(states.shape[1]).unsqueeze(1).repeat(1, states.shape[0]).T.unsqueeze(2).numpy()
+                    batch = generate_graph_batch(obs, same_ap, same_ue, agent_id)
+                    data = (
+                        batch,
+                        agent_id,
+                        rewards,
+                        costs,
+                        dones,
+                        infos,
+                        values,
+                        cost_preds,
+                        actions,
+                        action_log_probs,
+                        rnn_states,
+                        rnn_states_critic,
+                        rnn_states_cost
+                    )
+                else:
+                    obs, states, rewards, costs, dones, infos, mask = self.envs.step(
+                        actions.copy()
+                    )
+                    data = (
+                        obs,
+                        states,
+                        rewards,
+                        costs,
+                        dones,
+                        infos,
+                        values,
+                        cost_preds,
+                        actions,
+                        action_log_probs,
+                        rnn_states,
+                        rnn_states_critic,
+                        rnn_states_cost
+                    )
                 # insert data into buffer
                 self.insert(data)
 
@@ -115,10 +134,15 @@ class ApsCRunner(Runner):
                 self.log_env(infos, total_num_steps)
 
     def warmup(self):
-        obs, state, _, _, same_ue, same_ap = self.envs.reset()
-        agent_id = torch.arange(state.shape[1]).unsqueeze(1).repeat(1, state.shape[0]).T.unsqueeze(2).numpy()
-        batch = generate_graph_batch(obs, same_ap, same_ue, agent_id)
-        self.buffer.graph_storage.set_graph(0, batch)
+        if self.all_args.algorithm_name == "gnnmappol":
+            obs, state, _, _, same_ue, same_ap = self.envs.reset()
+            agent_id = torch.arange(state.shape[1]).unsqueeze(1).repeat(1, state.shape[0]).T.unsqueeze(2).numpy()
+            batch = generate_graph_batch(obs, same_ap, same_ue, agent_id)
+            self.buffer.graph_storage.set_graph(0, batch)
+        else:
+            obs, state, _, _ = self.envs.reset()
+            self.buffer.share_obs[0] = state.copy()
+            self.buffer.obs[0] = obs.copy()
 
     @torch.no_grad()
     def collect(self, step: int) -> Tuple[arr, arr, arr, arr, arr, arr]:
@@ -127,22 +151,41 @@ class ApsCRunner(Runner):
         else:
             deterministic=False
         self.trainer.prep_rollout()
-        (
-            value,
-            cost_preds,
-            action,
-            action_log_prob,
-            rnn_states,
-            rnn_states_critic,
-            rnn_states_cost
-        ) = self.trainer.policy.get_actions(
-            self.buffer.graph_storage[step],
-            np.concatenate(self.buffer.rnn_states[step]),
-            np.concatenate(self.buffer.rnn_states_critic[step]),
-            np.concatenate(self.buffer.rnn_states_cost[step]),
-            np.concatenate(self.buffer.masks[step]),
-            deterministic=deterministic
-        )
+        if self.all_args.algorithm_name == "gnnmappol":
+            (
+                value,
+                cost_preds,
+                action,
+                action_log_prob,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost
+            ) = self.trainer.policy.get_actions(
+                self.buffer.graph_storage[step],
+                np.concatenate(self.buffer.rnn_states[step]),
+                np.concatenate(self.buffer.rnn_states_critic[step]),
+                np.concatenate(self.buffer.rnn_states_cost[step]),
+                np.concatenate(self.buffer.masks[step]),
+                deterministic=deterministic
+            )
+        else:
+            (
+                value,
+                cost_preds,
+                action,
+                action_log_prob,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost
+            ) = self.trainer.policy.get_actions(
+                np.concatenate(self.buffer.share_obs[step]),
+                np.concatenate(self.buffer.obs[step]),
+                np.concatenate(self.buffer.rnn_states[step]),
+                np.concatenate(self.buffer.rnn_states_critic[step]),
+                np.concatenate(self.buffer.rnn_states_cost[step]),
+                np.concatenate(self.buffer.masks[step]),
+                deterministic=deterministic
+            )
 
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         cost_preds = np.array(np.split(_t2n(cost_preds), self.n_rollout_threads))
@@ -169,67 +212,126 @@ class ApsCRunner(Runner):
         )
 
     def insert(self, data):
-        (
-            batch,
-            agent_id,
-            rewards,
-            costs,
-            dones,
-            infos,
-            values,
-            cost_preds,
-            actions,
-            action_log_probs,
-            rnn_states,
-            rnn_states_critic,
-            rnn_states_cost
-        ) = data
+        if self.all_args.algorithm_name == "gnnmappol":
+            (
+                batch,
+                agent_id,
+                rewards,
+                costs,
+                dones,
+                infos,
+                values,
+                cost_preds,
+                actions,
+                action_log_probs,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost
+            ) = data
 
-        rnn_states[dones == True] = np.zeros(
-            ((dones == True).sum(), self.recurrent_N, self.hidden_size),
-            dtype=np.float32,
-        )
-        rnn_states_critic[dones == True] = np.zeros(
-            ((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]),
-            dtype=np.float32,
-        )
-        masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-        masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
+            rnn_states[dones == True] = np.zeros(
+                ((dones == True).sum(), self.recurrent_N, self.hidden_size),
+                dtype=np.float32,
+            )
+            rnn_states_critic[dones == True] = np.zeros(
+                ((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]),
+                dtype=np.float32,
+            )
+            masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
-        self.buffer.insert(
-            batch,
-            agent_id,
-            rnn_states,
-            rnn_states_critic,
-            rnn_states_cost,
-            actions,
-            action_log_probs,
-            values,
-            cost_preds,
-            rewards,
-            costs,
-            masks,
-        )
+            self.buffer.insert(
+                batch,
+                agent_id,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost,
+                actions,
+                action_log_probs,
+                values,
+                cost_preds,
+                rewards,
+                costs,
+                masks,
+            )
+        else:
+            (
+                obs, 
+                share_obs,
+                rewards,
+                costs,
+                dones,
+                infos,
+                values,
+                cost_preds,
+                actions,
+                action_log_probs,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost
+            ) = data
+
+            rnn_states[dones == True] = np.zeros(
+                ((dones == True).sum(), self.recurrent_N, self.hidden_size),
+                dtype=np.float32,
+            )
+            rnn_states_critic[dones == True] = np.zeros(
+                ((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]),
+                dtype=np.float32,
+            )
+            masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
+
+            self.buffer.insert(
+                share_obs,
+                obs,
+                rnn_states,
+                rnn_states_critic,
+                rnn_states_cost,
+                actions,
+                action_log_probs,
+                values,
+                cost_preds,
+                rewards,
+                costs,
+                masks,
+            )
 
     @torch.no_grad()
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
-        next_values = self.trainer.policy.get_values(
-            self.buffer.graph_storage[-1],
-            np.concatenate(self.buffer.rnn_states_critic[-1]),
-            np.concatenate(self.buffer.masks[-1]),
-        )
-        next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
-        self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
-
-        next_costs = self.trainer.policy.get_cost_values(
+        if self.all_args.algorithm_name == "gnnmappol":
+            next_values = self.trainer.policy.get_values(
+                self.buffer.graph_storage[-1],
+                np.concatenate(self.buffer.rnn_states_critic[-1]),
+                np.concatenate(self.buffer.masks[-1]),
+            )
+            next_costs = self.trainer.policy.get_cost_values(
             self.buffer.graph_storage[-1],
             np.concatenate(self.buffer.rnn_states_cost[-1]),
             np.concatenate(self.buffer.masks[-1]),
-        )
-        next_costs = np.array(np.split(_t2n(next_costs), self.n_rollout_threads))
+            )
+        else:
+            next_values = self.trainer.policy.get_values(
+                np.concatenate(self.buffer.share_obs[-1]),
+                np.concatenate(self.buffer.obs[-1]),
+                np.concatenate(self.buffer.rnn_states_critic[-1]),
+                np.concatenate(self.buffer.masks[-1]),
+            )
+            next_costs = self.trainer.policy.get_cost_values(
+                np.concatenate(self.buffer.share_obs[-1]),
+                np.concatenate(self.buffer.obs[-1]),
+                np.concatenate(self.buffer.rnn_states_cost[-1]),
+                np.concatenate(self.buffer.masks[-1]),
+            )
+
+        next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
+        self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
+    
+        next_costs = np.array(np.split(_t2n(next_costs), self.n_rollout_threads))        
         self.buffer.compute_cost_returns(next_costs, self.trainer.cost_normalizer)
+
         self.buffer.fix_ue_ids()
 
     @torch.no_grad()

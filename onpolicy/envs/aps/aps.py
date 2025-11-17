@@ -206,7 +206,7 @@ class Aps_c(gym.Env):
         if self.if_graph:
             return obs, state, reward, cost, done, info, mask, self.same_ue_edges, self.same_ap_edges
         else:
-            return obs, state, reward, done, info, mask
+            return obs, state, reward, cost, done, info, mask
 
 
     def compute_state_reward(self):
