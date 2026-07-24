@@ -225,7 +225,8 @@ class GR_MAPPOL():
             actions_batch, masks_batch, available_actions_batch, active_masks_batch)
 
         lambda_val = self.lamda_lagr[ue_idx_batch]
-        adv_targ_hybrid = (adv_targ - lambda_val * cost_adv_targ)
+        coef = lambda_val + self.lagrangian_coef * cost_return_batch.mean()
+        adv_targ_hybrid = (adv_targ - coef * cost_adv_targ)
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
         surr1 = imp_weights * adv_targ_hybrid
         surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ_hybrid
